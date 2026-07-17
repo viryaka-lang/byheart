@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ByHeart — memorize anything</title>
+<meta name="theme-color" content="#0F1322">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Memorize any text — Arabic or any language — with chunking, cloze veils, first-letter cues, blind recall and spaced repetition.">
+<link id="manifest-link" rel="manifest" href="">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Theme: Midnight Saffron (dark) — defaults */
+  --ink:#0F1322;          /* background */
+  --surface:#1A2138;      /* raised card */
+  --surface-2:#222B4A;    /* interactive raised */
+  --paper:#EDE7DA;        /* main text */
+  --paper-dim:#B8B2A3;    /* secondary text */
+  --saffron:#E4A63C;      /* accent */
+  --saffron-deep:#B67F22;
+  --veil:#2A3354;         /* hidden-word chip */
+  --veil-edge:#3A4570;
+  --edge:#262E4E;         /* card border */
+  --on-accent:#0F1322;    /* text on accent-colored buttons */
+  --sage:#7FB8A4;         /* good */
+  --ember:#D96C5F;        /* again */
+  --sky:#8FA8D9;          /* hard */
+  --ar-size:1.6rem;       /* Arabic passage size (user setting) */
+  --radius:14px;
+  --font-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-display:"Fraunces",Georgia,serif;
+  --font-ar:"Amiri","Scheherazade New","Traditional Arabic",serif;
+}
+html[data-theme="ink"][data-mode="light"]{
+  --ink:#F7F3E9; --surface:#FFFFFF; --surface-2:#F0EADB;
+  --paper:#23202E; --paper-dim:#6E6A5E;
+  --saffron:#A8720F; --saffron-deep:#8A5D0A;
+  --veil:#E7DFCB; --veil-edge:#CFC5A9; --edge:#E4DCC8;
+  --on-accent:#FFFFFF;
+  --sage:#2E7D5F; --ember:#BC4B3C; --sky:#4A6BAE;
+}
+html[data-theme="andalus"]{
+  --ink:#0B1512; --surface:#132420; --surface-2:#1B322B;
+  --paper:#E7EFE8; --paper-dim:#9EB3A6;
+  --saffron:#4FB584; --saffron-deep:#358E64;
+  --veil:#1E3A31; --veil-edge:#2E5346; --edge:#1C332C;
+  --on-accent:#0B1512;
+  --sage:#C9A25A; --ember:#D96C5F; --sky:#8FB8D9;
+}
+html[data-theme="andalus"][data-mode="light"]{
+  --ink:#EFF4EE; --surface:#FFFFFF; --surface-2:#E2ECE3;
+  --paper:#152420; --paper-dim:#5C7166;
+  --saffron:#1F7A55; --saffron-deep:#155E41;
+  --veil:#DCE8DD; --veil-edge:#B9CFBD; --edge:#D8E3D8;
+  --on-accent:#FFFFFF;
+  --sage:#96700F; --ember:#BC4B3C; --sky:#3E699C;
+}
+html[data-theme="rose"]{
+  --ink:#181019; --surface:#251A28; --surface-2:#322338;
+  --paper:#F1E7EE; --paper-dim:#B7A3B3;
+  --saffron:#E094AC; --saffron-deep:#C06B87;
+  --veil:#37243E; --veil-edge:#4E3557; --edge:#301F35;
+  --on-accent:#181019;
+  --sage:#8FB8A4; --ember:#E0785F; --sky:#9AA2E0;
+}
+html[data-theme="rose"][data-mode="light"]{
+  --ink:#F9F2F5; --surface:#FFFFFF; --surface-2:#F2E4EB;
+  --paper:#2A1626; --paper-dim:#7C6376;
+  --saffron:#A8355F; --saffron-deep:#87264A;
+  --veil:#F0DEE7; --veil-edge:#D9BCCB; --edge:#EBDAE3;
+  --on-accent:#FFFFFF;
+  --sage:#2E7D5F; --ember:#BC4B3C; --sky:#4A5BAE;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{height:100%}
+body{
+  min-height:100%;
+  background:var(--ink);
+  color:var(--paper);
+  font-family:var(--font-ui);
+  font-size:16px;
+  line-height:1.5;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#app{max-width:680px;margin:0 auto;padding:0 16px 96px}
+header.top{
+  display:flex;align-items:baseline;justify-content:space-between;
+  padding:20px 2px 14px;
+}
+.brand{font-family:var(--font-display);font-weight:650;font-size:1.5rem;letter-spacing:.01em}
+.brand .dot{color:var(--saffron)}
+.due-pill{
+  font-size:.8rem;color:var(--on-accent);background:var(--saffron);
+  border-radius:999px;padding:2px 10px;font-weight:600;
+}
+.due-pill.zero{background:var(--surface-2);color:var(--paper-dim)}
+nav.tabs{
+  position:fixed;bottom:0;left:0;right:0;z-index:20;
+  display:flex;justify-content:center;gap:8px;
+  background:linear-gradient(to top, var(--ink) 65%, transparent);
+  padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+}
+nav.tabs button{
+  flex:0 1 160px;
+  background:var(--surface);color:var(--paper-dim);
+  border:1px solid var(--veil-edge);border-radius:999px;
+  padding:10px 0;font-family:var(--font-ui);font-size:.9rem;font-weight:500;
+  cursor:pointer;
+}
+nav.tabs button.active{background:var(--saffron);border-color:var(--saffron);color:var(--on-accent);font-weight:600}
+nav.tabs button.addfab{
+  flex:0 0 52px;height:52px;border-radius:50%;padding:0;
+  font-size:1.5rem;line-height:1;color:var(--saffron);
+  border:1px solid var(--saffron);background:var(--surface);
+  margin-top:-6px;
+}
+nav.tabs button.addfab:active{background:var(--saffron);color:var(--on-accent)}
+.due-pill{cursor:pointer}
+.due-pill.zero{cursor:default}
+h2.screen-title{font-family:var(--font-display);font-weight:650;font-size:1.25rem;margin:6px 0 14px}
+.muted{color:var(--paper-dim);font-size:.9rem}
+.card{
+  background:var(--surface);border:1px solid var(--edge);border-radius:var(--radius);
+  padding:16px;margin-bottom:12px;
+}
+.card.tappable{cursor:pointer}
+.card.tappable:active{background:var(--surface-2)}
+button.primary,button.ghost,button.grade{
+  font-family:var(--font-ui);border-radius:12px;cursor:pointer;font-size:.95rem;
+  padding:12px 18px;border:none;font-weight:600;min-height:46px;
+}
+button.primary{background:var(--saffron);color:var(--on-accent)}
+button.primary:active{background:var(--saffron-deep)}
+button.primary:disabled{opacity:.45;cursor:default}
+button.ghost{background:transparent;color:var(--paper-dim);border:1px solid var(--veil-edge)}
+button.icon{
+  background:var(--surface-2);border:1px solid var(--veil-edge);color:var(--paper);
+  border-radius:10px;padding:8px 12px;cursor:pointer;font-size:1rem;line-height:1;
+}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row.spread{justify-content:space-between}
+.stack{display:flex;flex-direction:column;gap:10px}
+input[type=text],textarea,select{
+  width:100%;background:var(--ink);border:1px solid var(--veil-edge);
+  color:var(--paper);border-radius:10px;padding:12px;font-size:1rem;font-family:var(--font-ui);
+}
+textarea{min-height:150px;resize:vertical;line-height:1.7}
+textarea.rtl,.rtl{direction:rtl;font-family:var(--font-ar);font-size:calc(var(--ar-size)*0.8)}
+label.field{font-size:.85rem;color:var(--paper-dim);display:block;margin-bottom:6px}
+
+/* ---------- Ladder (stage progress) ---------- */
+.ladder{display:flex;gap:5px;align-items:center}
+.ladder .rung{
+  width:14px;height:6px;border-radius:3px;background:var(--veil);
+}
+.ladder .rung.done{background:var(--saffron)}
+.ladder .rung.heart{width:10px;height:10px;border-radius:50%}
+.ladder .rung.heart.done{background:var(--sage)}
+.stage-name{font-size:.78rem;color:var(--paper-dim);letter-spacing:.04em;text-transform:uppercase}
+
+/* ---------- Reading / cloze text ---------- */
+.passage{
+  font-size:1.15rem;line-height:2;word-spacing:.05em;
+  animation:riseIn .28s ease both;
+}
+@keyframes riseIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.passage.rtl{font-size:var(--ar-size);line-height:2.2}
+.passage .w{padding:2px 3px;border-radius:6px}
+.passage .veiled{
+  background:var(--veil);color:transparent;cursor:pointer;
+  border-bottom:2px solid var(--veil-edge);
+  user-select:none;padding:3px 4px;
+  transition:background .18s,color .18s;
+}
+.passage .veiled.peeked{background:transparent;color:var(--saffron);border-bottom-color:transparent}
+.passage .fl{color:var(--paper)}
+.passage .fl .rest{color:var(--paper-dim);opacity:.55;letter-spacing:2px}
+.cue{
+  color:var(--paper-dim);opacity:.75;font-size:.95em;
+  border-inline-start:3px solid var(--saffron);padding-inline-start:10px;margin-bottom:12px;
+}
+.cue.rtl{font-family:var(--font-ar);font-size:calc(var(--ar-size)*0.8)}
+
+.trainer-head{display:flex;justify-content:space-between;align-items:center;margin:4px 0 12px}
+.chunk-count{font-size:.85rem;color:var(--paper-dim)}
+.stagebar{margin:2px 0 16px}
+.hint{font-size:.85rem;color:var(--paper-dim);margin-top:10px}
+
+.grades{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+button.grade{padding:12px 4px;font-size:.9rem;color:var(--on-accent)}
+.g-again{background:var(--ember)}
+.g-hard{background:var(--sky)}
+.g-good{background:var(--sage)}
+.g-easy{background:var(--saffron)}
+.grade small{display:block;font-weight:400;font-size:.7rem;opacity:.8}
+
+.blind-box{
+  min-height:120px;border:1px dashed var(--veil-edge);border-radius:var(--radius);
+  padding:16px;display:flex;align-items:center;justify-content:center;text-align:center;
+  color:var(--paper-dim);
+}
+.progressline{height:4px;background:var(--veil);border-radius:2px;overflow:hidden;margin:8px 0 16px}
+.progressline i{display:block;height:100%;background:var(--saffron)}
+
+.empty{
+  text-align:center;padding:40px 12px;color:var(--paper-dim);
+}
+/* ---------- Ayah markers (Quran mode) ---------- */
+.passage .ayah{
+  color:var(--saffron);font-size:.72em;vertical-align:middle;
+  border:1px solid var(--veil-edge);border-radius:999px;
+  padding:1px 8px;margin-inline:3px;white-space:nowrap;user-select:none;
+}
+/* ---------- Settings ---------- */
+.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.theme-card{
+  border:2px solid var(--edge);border-radius:12px;padding:10px;cursor:pointer;
+  text-align:center;background:var(--surface);
+}
+.theme-card.selected{border-color:var(--saffron)}
+.theme-card .swatches{display:flex;justify-content:center;gap:5px;margin-bottom:8px}
+.theme-card .sw{width:18px;height:18px;border-radius:50%;border:1px solid rgba(128,128,128,.35)}
+.theme-card .tname{font-size:.8rem;color:var(--paper-dim)}
+.mode-toggle{display:flex;gap:0;border:1px solid var(--veil-edge);border-radius:999px;overflow:hidden;width:max-content}
+.mode-toggle button{
+  border:none;background:transparent;color:var(--paper-dim);padding:9px 22px;
+  font-family:var(--font-ui);font-size:.9rem;cursor:pointer;font-weight:500;
+}
+.mode-toggle button.on{background:var(--saffron);color:var(--on-accent);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--saffron)}
+.ar-preview{
+  direction:rtl;font-family:var(--font-ar);font-size:var(--ar-size);line-height:2;
+  background:var(--ink);border:1px solid var(--veil-edge);border-radius:10px;
+  padding:12px;text-align:center;
+}
+.empty .big{font-family:var(--font-display);font-size:1.2rem;color:var(--paper);margin-bottom:8px}
+.danger{color:var(--ember)}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:88px;z-index:40;
+  background:var(--surface-2);border:1px solid var(--veil-edge);color:var(--paper);
+  padding:10px 18px;border-radius:999px;font-size:.9rem;opacity:0;pointer-events:none;
+  transition:opacity .25s;
+}
+.toast.show{opacity:1}
+.small-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.tag{font-size:.75rem;background:var(--surface-2);border-radius:999px;padding:2px 10px;color:var(--paper-dim)}
+.tag.due{background:var(--saffron);color:var(--on-accent);font-weight:600}
+.continue-chip{
+  background:var(--surface-2);border:1px solid var(--saffron);color:var(--saffron);
+  border-radius:999px;padding:7px 16px;font-size:.85rem;font-weight:600;
+  cursor:pointer;font-family:var(--font-ui);
+}
+.continue-chip:active{background:var(--saffron);color:var(--on-accent)}
+.peekmeter{font-size:.8rem;color:var(--paper-dim);margin-top:10px}
+.peekmeter b{color:var(--saffron)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">By<span class="dot">Heart</span></div>
+    <div class="row" style="gap:8px">
+      <div id="duePill" class="due-pill zero" onclick="if(dueChunks().length)go('review')">0 due</div>
+      <button class="icon" onclick="go('settings')" aria-label="Settings">⚙</button>
+    </div>
+  </header>
+  <main id="screen"></main>
+</div>
+
+<nav class="tabs">
+  <button id="tabLib" class="active" onclick="go('library')">Texts</button>
+  <button class="addfab" onclick="go('add')" aria-label="Add a text">＋</button>
+  <button id="tabRev" onclick="go('review')">Review</button>
+</nav>
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+
+/* ============ safe storage (falls back to memory) ============ */
+const mem = {};
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return mem[k] ?? null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
+};
+
+/* ============ state ============ */
+const DEFAULT_STATE = { texts: [], active:null, settings:{theme:"ink", mode:"dark", arSize:1.6} };
+let S = load();
+function load(){
+  try{
+    const raw = store.get("byheart.v1");
+    if(raw){
+      const s = JSON.parse(raw);
+      s.settings = Object.assign({theme:"ink", mode:"dark", arSize:1.6}, s.settings||{});
+      return s;
+    }
+  }catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+function save(){ store.set("byheart.v1", JSON.stringify(S)); renderDuePill(); }
+const uid = () => Math.random().toString(36).slice(2,10);
+const now = () => Date.now();
+const DAY = 86400000, MIN = 60000;
+
+/* ============ language helpers ============ */
+const isArabicText = t => (t.match(/[\u0600-\u06FF]/g)||[]).length > t.length*0.15;
+function detectLang(t){
+  if(isArabicText(t)) return "ar";
+  if(/[\u0590-\u05FF]/.test(t)) return "he";
+  if(/[\u4E00-\u9FFF]/.test(t)) return "zh";
+  if(/[\u3040-\u30FF]/.test(t)) return "ja";
+  if(/[\uAC00-\uD7AF]/.test(t)) return "ko";
+  if(/[\u0400-\u04FF]/.test(t)) return "ru";
+  return "";
+}
+const isRTL = lang => lang==="ar"||lang==="he";
+
+/* ============ chunking ============ */
+function chunkText(raw, targetWords){
+  const text = raw.replace(/\r/g,"").trim();
+  // split into sentence-ish units: newlines first, then sentence punctuation (Latin + Arabic)
+  const lines = text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  let units = [];
+  for(const line of lines){
+    const parts = line.split(/(?<=[.!?؟।۔…؛;:])\s+/).map(s=>s.trim()).filter(Boolean);
+    units.push(...(parts.length?parts:[line]));
+  }
+  // merge units into chunks near targetWords
+  const chunks=[]; let cur=[];
+  const wc = s => s.split(/\s+/).filter(Boolean).length;
+  let curWc=0;
+  for(const u of units){
+    const w = wc(u);
+    if(curWc>0 && curWc + w > targetWords*1.4){ chunks.push(cur.join(" ")); cur=[u]; curWc=w; }
+    else { cur.push(u); curWc+=w; if(curWc>=targetWords){ chunks.push(cur.join(" ")); cur=[]; curWc=0; } }
+  }
+  if(cur.length) chunks.push(cur.join(" "));
+  return chunks;
+}
+
+/* ============ Quran mode: verse-aware chunking ============ */
+/* Ayah-end markers commonly found in pasted Quran text:
+   ﴿١٢﴾ ornate parens · (12) [12] · ۝ (U+06DD) with optional digits ·
+   a standalone run of Arabic-Indic digits ١٢٣ between words */
+const AYAH_MARK = /(﴿\s*[٠-٩0-9]+\s*﴾|[\(\[]\s*[٠-٩0-9]+\s*[\)\]]|۝\s*[٠-٩0-9]*|(?:^|(?<=\s))[٠-٩]+(?=\s|$))/u;
+function hasAyahMarks(t){
+  const m = t.match(new RegExp(AYAH_MARK.source,"gu"));
+  return !!m && m.length >= 2;
+}
+function isAyahMark(word){
+  return /^(﴿\s*[٠-٩0-9]+\s*﴾|[\(\[]\s*[٠-٩0-9]+\s*[\)\]]|۝\s*[٠-٩0-9]*|[٠-٩]+)$/u.test(word);
+}
+function splitVerses(raw){
+  const text = raw.replace(/\r/g,"").replace(/\n+/g," ").trim();
+  const parts = text.split(new RegExp(AYAH_MARK.source,"u"));
+  const verses=[];
+  for(let i=0;i<parts.length;i+=2){
+    const body = (parts[i]||"").trim();
+    const mark = (parts[i+1]||"").trim();
+    if(body) verses.push(mark ? body+" "+mark : body);
+    else if(mark && verses.length) verses[verses.length-1]+=" "+mark;
+  }
+  return verses;
+}
+function chunkQuran(raw, targetWords){
+  const verses = splitVerses(raw);
+  if(!verses.length) return chunkText(raw, targetWords);
+  const wc = s => s.split(/\s+/).filter(w=>w && !isAyahMark(w)).length;
+  const chunks=[]; let cur=[]; let curWc=0;
+  for(const v of verses){
+    const w = wc(v);
+    if(curWc>0 && curWc + w > targetWords*1.4){ chunks.push(cur.join(" ")); cur=[v]; curWc=w; }
+    else { cur.push(v); curWc+=w; if(curWc>=targetWords){ chunks.push(cur.join(" ")); cur=[]; curWc=0; } }
+  }
+  if(cur.length) chunks.push(cur.join(" "));
+  return chunks; // a verse is never split across two chunks
+}
+
+/* ============ SRS (simplified SM-2) ============ */
+function gradeChunk(c, g){ // g: 0 again, 1 hard, 2 good, 3 easy
+  c.ef = c.ef ?? 2.5; c.reps = c.reps ?? 0; c.interval = c.interval ?? 0;
+  if(g===0){ c.reps=0; c.interval=0; c.due=now()+10*MIN; c.ef=Math.max(1.3,c.ef-0.2); }
+  else{
+    if(g===1) c.ef=Math.max(1.3,c.ef-0.15);
+    if(g===3) c.ef=Math.min(2.8,c.ef+0.1);
+    c.reps++;
+    if(c.reps===1) c.interval = g===3? 2:1;
+    else if(c.reps===2) c.interval = g===3? 5:3;
+    else c.interval = Math.round(c.interval * (g===1?1.2:g===2?c.ef:c.ef*1.35));
+    c.due = now() + c.interval*DAY;
+  }
+}
+function dueChunks(){
+  const out=[];
+  for(const t of S.texts) for(const c of t.chunks)
+    if(c.stage>=5 && c.due && c.due<=now()) out.push({t,c});
+  return out;
+}
+
+/* ============ UI helpers ============ */
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+function toast(msg){
+  const t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200);
+}
+function renderDuePill(){
+  const n = dueChunks().length;
+  const p = $("duePill");
+  p.textContent = n+" due";
+  p.classList.toggle("zero", n===0);
+}
+const STAGES = ["Read","Veil ¼","Veil ½","First letters","By heart","Reviewing"];
+
+/* ============ router ============ */
+let route = {name:"library"};
+function go(name, params, opts){
+  route = Object.assign({name}, params||{});
+  if(!(opts&&opts.pop)){
+    try{ history.pushState(route, "", "#"+name); }catch(e){}
+  }
+  render();
+}
+window.addEventListener("popstate", e=>{
+  route = (e.state && e.state.name) ? e.state : {name:"library"};
+  render();
+});
+try{ history.replaceState(route, "", "#library"); }catch(e){}
+function render(){
+  $("tabLib").classList.toggle("active", route.name!=="review");
+  $("tabRev").classList.toggle("active", route.name==="review");
+  renderDuePill();
+  const el = $("screen");
+  if(route.name==="library") el.innerHTML = viewLibrary();
+  else if(route.name==="add") el.innerHTML = viewAdd();
+  else if(route.name==="text") el.innerHTML = viewText(route.id);
+  else if(route.name==="train") el.innerHTML = viewTrain();
+  else if(route.name==="review") el.innerHTML = viewReview();
+  else if(route.name==="settings") el.innerHTML = viewSettings();
+  window.scrollTo(0,0);
+  afterRender();
+}
+
+/* ============ Library ============ */
+function viewLibrary(){
+  let html = `<h2 class="screen-title">Your texts</h2>`;
+  if(!S.texts.length){
+    html += `<div class="empty">
+      <div class="big">Nothing memorized yet</div>
+      Paste a poem, Quran passage, speech, or vocabulary — in any language — and ByHeart will walk you up the ladder until you know it cold.
+      <div style="margin-top:20px"><button class="primary" onclick="go('add')">Add a text</button></div>
+    </div>`;
+    return html;
+  }
+  html += `<div class="stack">`;
+  for(const t of S.texts){
+    const total=t.chunks.length;
+    const learned=t.chunks.filter(c=>c.stage>=5).length;
+    const due=t.chunks.filter(c=>c.stage>=5 && c.due<=now()).length;
+    const pct = total? Math.round(100*t.chunks.reduce((a,c)=>a+Math.min(c.stage,5),0)/(5*total)) :0;
+    const next = t.chunks.find(c=>c.stage<5);
+    const action = next
+      ? `<button class="continue-chip" onclick="event.stopPropagation();startTrain('${t.id}','${next.id}')">Continue →</button>`
+      : due ? `<button class="continue-chip" onclick="event.stopPropagation();go('review')">Review ${due} →</button>` : "";
+    html += `<div class="card tappable" onclick="go('text',{id:'${t.id}'})">
+      <div class="row spread">
+        <strong class="${t.rtl?'rtl':''}" style="font-size:1.05rem">${esc(t.title)}</strong>
+        ${due?`<span class="tag due">${due} due</span>`:`<span class="tag">${learned}/${total} by heart</span>`}
+      </div>
+      <div class="progressline"><i style="width:${pct}%"></i></div>
+      <div class="row spread">
+        <span class="muted">${total} chunks · ${pct}% learned</span>
+        ${action}
+      </div>
+    </div>`;
+  }
+  html += `</div>
+  <div style="margin-top:16px" class="row">
+    <button class="ghost" onclick="exportData()">Backup</button>
+    <button class="ghost" onclick="importData()">Restore</button>
+  </div>`;
+  return html;
+}
+
+/* ============ Add text ============ */
+function viewAdd(){
+  return `<h2 class="screen-title">New text</h2>
+  <div class="card stack">
+    <div><label class="field">Title</label><input type="text" id="fTitle" placeholder="e.g. Surah Al-Mulk · If— by Kipling"></div>
+    <div><label class="field">Text to memorize</label>
+      <textarea id="fBody" placeholder="Paste the full text here — Arabic or any language. Line breaks and verse marks are used to split it into small chunks." oninput="autoDir(this);previewChunks()"></textarea></div>
+    <div class="row" style="gap:8px">
+      <input type="checkbox" id="fQuran" style="width:20px;height:20px;accent-color:var(--saffron)" onchange="previewChunks()">
+      <label for="fQuran" style="cursor:pointer">Quran mode — split by ayah, keep verse numbers, never cut inside a verse</label>
+    </div>
+    <p class="hint" id="quranHint" style="display:none;margin-top:0">Ayah markers detected — Quran mode switched on.</p>
+    <div><label class="field">Chunk size (words per piece — smaller is easier)</label>
+      <select id="fSize" onchange="previewChunks()">
+        <option value="8">Small (~8 words) — dense or sacred texts</option>
+        <option value="14" selected>Medium (~14 words)</option>
+        <option value="24">Large (~24 words) — prose you find easy</option>
+      </select></div>
+    <p class="hint" id="chunkPreview" style="margin-top:0"></p>
+    <div class="row">
+      <button class="primary" onclick="createText()">Chunk & start</button>
+      <button class="ghost" onclick="loadExample()">Try an example</button>
+      <button class="ghost" onclick="go('library')">Cancel</button>
+    </div>
+  </div>
+  <p class="hint">Why chunks? Working memory holds only a few items at a time. ByHeart teaches one small piece to mastery, links it to the previous piece, then schedules reviews at growing intervals — the same method used by hafiz students and actors alike.</p>`;
+}
+function previewChunks(){
+  const el=$("chunkPreview"); if(!el) return;
+  const body=$("fBody").value.trim();
+  if(!body){ el.textContent=""; return; }
+  const size=parseInt($("fSize").value,10);
+  const q=$("fQuran").checked;
+  const n=(q?chunkQuran(body,size):chunkText(body,size)).length;
+  el.textContent = `This will become ${n} chunk${n===1?"":"s"} — roughly ${n} short learning session${n===1?"":"s"}.`;
+}
+function loadExample(){
+  $("fTitle").value = "Surah Al-Ikhlas";
+  $("fBody").value = "قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾";
+  autoDir($("fBody")); previewChunks();
+}
+function autoDir(el){
+  el.classList.toggle("rtl", isArabicText(el.value));
+  const q = hasAyahMarks(el.value);
+  const cb = $("fQuran"), hint = $("quranHint");
+  if(q && cb && !cb.checked){ cb.checked = true; if(hint) hint.style.display="block"; }
+}
+function createText(){
+  const title = $("fTitle").value.trim() || "Untitled";
+  const body = $("fBody").value.trim();
+  if(!body){ toast("Paste the text first"); return; }
+  const size = parseInt($("fSize").value,10);
+  const lang = detectLang(body);
+  const quran = $("fQuran").checked;
+  const pieces = quran ? chunkQuran(body, size) : chunkText(body, size);
+  const chunks = pieces.map((text,i)=>({
+    id:uid(), i, text, stage:0, ef:2.5, reps:0, interval:0, due:0
+  }));
+  const t = { id:uid(), title, lang, rtl:isRTL(lang), quran, chunks, created:now() };
+  S.texts.push(t); save();
+  toast(chunks.length+(quran?" verse-aligned chunks created":" chunks created"));
+  go("text",{id:t.id});
+}
+
+/* ============ Text overview ============ */
+function getText(id){ return S.texts.find(t=>t.id===id); }
+function viewText(id){
+  const t = getText(id); if(!t) return viewLibrary();
+  const next = t.chunks.find(c=>c.stage<5);
+  let html = `<h2 class="screen-title ${t.rtl?'rtl':''}">${esc(t.title)}</h2>
+  <div class="row" style="margin-bottom:14px">
+    ${next?`<button class="primary" onclick="startTrain('${t.id}','${next.id}')">Continue learning</button>`:""}
+    <button class="ghost" onclick="reciteAll('${t.id}')">Recite whole text</button>
+    <button class="ghost danger" onclick="deleteText('${t.id}')">Delete</button>
+  </div>
+  <div class="stack">`;
+  for(const c of t.chunks){
+    const due = c.stage>=5 && c.due<=now();
+    html += `<div class="card tappable" onclick="startTrain('${t.id}','${c.id}')">
+      <div class="row spread" style="margin-bottom:8px">
+        <span class="stage-name">${STAGES[Math.min(c.stage,5)]}</span>
+        ${due?`<span class="tag due">due</span>`:c.stage>=5?`<span class="tag">next in ${fmtIn(c.due)}</span>`:""}
+      </div>
+      ${ladder(c)}
+      <div class="passage ${t.rtl?'rtl':''}" style="font-size:${t.rtl?'1.3rem':'1rem'};line-height:1.9;margin-top:8px;color:var(--paper-dim)">${esc(shorten(c.text,90))}</div>
+    </div>`;
+  }
+  return html+`</div>`;
+}
+function ladder(c){
+  let h = `<div class="ladder">`;
+  for(let i=1;i<=4;i++) h+=`<span class="rung ${c.stage>=i?'done':''}"></span>`;
+  h+=`<span class="rung heart ${c.stage>=5?'done':''}" title="by heart"></span></div>`;
+  return h;
+}
+function shorten(s,n){ return s.length>n ? s.slice(0,n)+"…" : s; }
+function fmtIn(ts){
+  const d = ts-now();
+  if(d<=0) return "now";
+  if(d<DAY) return Math.max(1,Math.round(d/3600000))+"h";
+  return Math.round(d/DAY)+"d";
+}
+function deleteText(id){
+  if(!confirm("Delete this text and all its progress?")) return;
+  S.texts = S.texts.filter(t=>t.id!==id); save(); go("library");
+}
+
+/* ============ Trainer ============ */
+let T = null; // {textId, chunkId, mode:'learn'|'review', revealed:false}
+function startTrain(textId, chunkId){ T={textId,chunkId,mode:"learn",revealed:false,hint:false,peeks:0}; go("train"); }
+
+function tokenize(text){ return text.split(/\s+/).filter(Boolean); }
+function wSpan(w, quran){
+  if(quran && isAyahMark(w)) return `<span class="ayah">${esc(w)}</span>`;
+  return `<span class="w">${esc(w)}</span>`;
+}
+function pickHidden(words, frac, quran){
+  const eligible = words.map((w,i)=>i).filter(i=>!(quran && isAyahMark(words[i])));
+  const n = Math.max(1, Math.round(eligible.length*frac));
+  for(let i=eligible.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [eligible[i],eligible[j]]=[eligible[j],eligible[i]]; }
+  return new Set(eligible.slice(0,n));
+}
+function firstLetters(t,c){
+  const words = tokenize(c.text);
+  const q = !!t.quran;
+  return `<div class="passage ${t.rtl?'rtl':''}">${words.map(w=>{
+    if(q && isAyahMark(w)) return `<span class="ayah">${esc(w)}</span>`;
+    const chars=[...w];
+    return `<span class="w fl">${esc(chars[0]||"")}<span class="rest">${"·".repeat(Math.max(1,Math.min(chars.length-1,6)))}</span></span>`;
+  }).join(" ")}</div>`;
+}
+function peek(el){
+  el.classList.toggle("peeked");
+  if(el.classList.contains("peeked")){
+    T.peeks = (T.peeks||0)+1;
+    const m=$("peekMeter");
+    if(m) m.innerHTML = "Peeks this attempt: <b>"+T.peeks+"</b>";
+  }
+}
+function renderPassage(t, c, stage){
+  const words = tokenize(c.text);
+  const rtl = t.rtl ? "rtl":"";
+  const q = !!t.quran;
+  if(stage===0 || stage>=4 && T.revealed){ // full text
+    return `<div class="passage ${rtl}">${words.map(w=>wSpan(w,q)).join(" ")}</div>`;
+  }
+  if(stage===1||stage===2){
+    const frac = stage===1?0.3:0.6;
+    const hidden = pickHidden(words, frac, q);
+    return `<div class="passage ${rtl}">${words.map((w,i)=>
+      hidden.has(i)
+        ? `<span class="w veiled" onclick="peek(this)">${esc(w)}</span>`
+        : wSpan(w,q)).join(" ")}</div>
+    <div class="peekmeter" id="peekMeter">${T.peeks?`Peeks this attempt: <b>${T.peeks}</b>`:"Tap a veiled word only if you must — struggling first is what builds the memory."}</div>`;
+  }
+  if(stage===3){ // first letters; ayah marks stay whole as anchors
+    return firstLetters(t,c);
+  }
+  // stage 4+ blind — with optional first-letter hint
+  if(T.hint) return firstLetters(t,c);
+  return `<div class="blind-box">Recite it out loud from memory — then reveal and check yourself.</div>`;
+}
+function prevCue(t,c){
+  if(c.i===0) return "";
+  const prev = t.chunks[c.i-1];
+  const words = tokenize(prev.text);
+  const tail = words.slice(-6).join(" ");
+  return `<div class="cue ${t.rtl?'rtl':''}" title="end of previous chunk">… ${esc(tail)}</div>`;
+}
+
+function viewTrain(){
+  if(!T) return viewLibrary();
+  const t = getText(T.textId); if(!t) return viewLibrary();
+  const c = t.chunks.find(c=>c.id===T.chunkId); if(!c) return viewText(t.id);
+  const stage = (T.mode==="review"||T.mode==="recite") ? 4 : Math.min(c.stage,4);
+  const idx = c.i+1;
+
+  let controls = "";
+  if(T.mode==="learn" && stage<4){
+    const tips = [
+      "Read it slowly twice, then say it out loud once.",
+      "Read aloud — tap any veiled word only if you truly need it.",
+      "More is hidden now. Recite the whole chunk, peeking as little as possible.",
+      "Only first letters remain. Recite the full chunk from these cues."
+    ];
+    controls = `<p class="hint">${tips[stage]}</p>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" onclick="advanceStage(1)">Got it — next step</button>
+      ${stage>0?`<button class="ghost" onclick="advanceStage(-1)">Too hard — step back</button>`:""}
+    </div>`;
+  } else { // blind recall (learn stage 4, or review/recite)
+    if(!T.revealed){
+      controls = `<div class="row" style="margin-top:14px">
+        <button class="primary" onclick="T.revealed=true;render()">Reveal & check</button>
+        ${!T.hint?`<button class="ghost" onclick="T.hint=true;render()">Hint — first letters</button>`:""}
+      </div>
+      ${T.hint?`<p class="hint">Hint shown — if you needed it, grade yourself no higher than Hard.</p>`:""}`;
+    } else {
+      controls = `<p class="hint">${T.hint?"You used the hint — be honest and grade no higher than Hard.":"How did it go? Be honest — honest grading is what makes the schedule work."}</p>
+      <div class="grades">
+        <button class="grade g-again" onclick="doGrade(0)">Again<small>blanked</small></button>
+        <button class="grade g-hard" onclick="doGrade(1)">Hard<small>hesitant</small></button>
+        <button class="grade g-good" onclick="doGrade(2)">Good<small>solid</small></button>
+        <button class="grade g-easy" onclick="doGrade(3)">Easy<small>flawless</small></button>
+      </div>`;
+    }
+  }
+
+  return `<div class="trainer-head">
+    <button class="icon" onclick="${T.mode==='review'?"go('review')":`go('text',{id:'${t.id}'})`}" aria-label="Back">←</button>
+    <span class="chunk-count ${t.rtl?'rtl':''}">${esc(shorten(t.title,26))} · ${idx}/${t.chunks.length}</span>
+    <span></span>
+  </div>
+  <div class="stagebar">
+    <div class="row spread">
+      <span class="stage-name">${T.mode==="review"?("Review · "+dueChunks().length+" left"):T.mode==="recite"?"Recitation":STAGES[stage]}</span>
+      ${ladder(c)}
+    </div>
+  </div>
+  ${prevCue(t,c)}
+  ${renderPassage(t,c,stage)}
+  ${controls}`;
+}
+
+function buzz(){ try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){} }
+function resetAttempt(){ T.revealed=false; T.hint=false; T.peeks=0; }
+function advanceStage(d){
+  const t=getText(T.textId), c=t.chunks.find(x=>x.id===T.chunkId);
+  c.stage = Math.max(0, Math.min(4, c.stage+d));
+  resetAttempt(); buzz();
+  save(); render();
+}
+function doGrade(g){
+  const t=getText(T.textId), c=t.chunks.find(x=>x.id===T.chunkId);
+  buzz();
+  if(T.mode==="learn"){
+    if(g>=2){ // graduated!
+      c.stage=5; gradeChunk(c,g); save();
+      const next = t.chunks.find(x=>x.stage<5);
+      toast("By heart ✓ — review scheduled in "+fmtIn(c.due));
+      if(next){ T={textId:t.id, chunkId:next.id, mode:"learn", revealed:false, hint:false, peeks:0}; render(); }
+      else { toast("Whole text learned — reviews will keep it fresh"); go("text",{id:t.id}); }
+    } else {
+      c.stage = g===0?1:3; // drop back for relearning
+      resetAttempt(); save(); render();
+      toast(g===0?"No problem — back to a lighter veil":"Back to first letters");
+    }
+  } else if(T.mode==="recite"){ // sequential full-text recitation
+    if(c.stage>=5){ gradeChunk(c,g); if(g===0) c.stage=3; }
+    save();
+    const next = t.chunks[c.i+1];
+    if(next){ T={textId:t.id, chunkId:next.id, mode:"recite", revealed:false, hint:false, peeks:0}; render(); }
+    else { toast("Full recitation complete 🎉"); go("text",{id:t.id}); }
+  } else { // review
+    gradeChunk(c,g);
+    if(g===0) c.stage=3; // will relearn via first letters then blind
+    save();
+    nextReview();
+  }
+}
+
+/* ============ Review queue ============ */
+function viewReview(){
+  const due = dueChunks();
+  if(!due.length){
+    const soon = S.texts.flatMap(t=>t.chunks).filter(c=>c.stage>=5).sort((a,b)=>a.due-b.due)[0];
+    return `<h2 class="screen-title">Review</h2>
+    <div class="empty"><div class="big">Nothing due right now</div>
+    ${soon?`Next review in ${fmtIn(soon.due)}. Reviews arrive just before you'd forget — that struggle is what builds the memory.`:"Learn some chunks first and they'll show up here on a spaced schedule."}
+    </div>`;
+  }
+  return `<h2 class="screen-title">Review — ${due.length} due</h2>
+  <div class="card">
+    <p>Each card: recite from memory, reveal, grade yourself honestly. "Again" brings it back in 10 minutes; "Easy" pushes it far into the future.</p>
+    <div style="margin-top:12px"><button class="primary" onclick="nextReview()">Start reviewing</button></div>
+  </div>`;
+}
+function nextReview(){
+  const due = dueChunks();
+  if(!due.length){ toast("Review session complete 🎉"); go("review"); return; }
+  const {t,c} = due[0];
+  T = {textId:t.id, chunkId:c.id, mode:"review", revealed:false, hint:false, peeks:0};
+  go("train");
+}
+
+/* ============ Recite whole ============ */
+function reciteAll(id){
+  const t=getText(id); if(!t || !t.chunks.length) return;
+  T={textId:id, chunkId:t.chunks[0].id, mode:"recite", revealed:false, hint:false, peeks:0};
+  toast("Recite each chunk in order, then grade yourself");
+  go("train");
+}
+
+/* ============ Settings: themes, mode, Arabic size ============ */
+const THEMES = [
+  {id:"ink",     name:"Midnight Saffron", sw:{dark:["#0F1322","#1A2138","#E4A63C"], light:["#F7F3E9","#FFFFFF","#A8720F"]}},
+  {id:"andalus", name:"Andalus",          sw:{dark:["#0B1512","#132420","#4FB584"], light:["#EFF4EE","#FFFFFF","#1F7A55"]}},
+  {id:"rose",    name:"Damascene Rose",   sw:{dark:["#181019","#251A28","#E094AC"], light:["#F9F2F5","#FFFFFF","#A8355F"]}}
+];
+function applySettings(){
+  const st = S.settings;
+  const root = document.documentElement;
+  root.dataset.theme = st.theme;
+  root.dataset.mode = st.mode;
+  root.style.setProperty("--ar-size", st.arSize+"rem");
+  // keep the Android status bar in tune with the theme
+  requestAnimationFrame(()=>{
+    const bg = getComputedStyle(document.body).backgroundColor;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if(meta && bg) meta.setAttribute("content", bg);
+  });
+}
+function setTheme(id){ S.settings.theme=id; save(); applySettings(); render(); }
+function setMode(m){ S.settings.mode=m; save(); applySettings(); render(); }
+function setArSize(v){
+  S.settings.arSize = parseFloat(v); save(); applySettings();
+  const lbl=$("arSizeLbl"); if(lbl) lbl.textContent = Math.round(S.settings.arSize*10)+"pt";
+}
+function viewSettings(){
+  const st=S.settings;
+  let themes = THEMES.map(t=>{
+    const sw = t.sw[st.mode]||t.sw.dark;
+    return `<div class="theme-card ${st.theme===t.id?'selected':''}" onclick="setTheme('${t.id}')">
+      <div class="swatches">${sw.map(c=>`<span class="sw" style="background:${c}"></span>`).join("")}</div>
+      <div class="tname">${t.name}</div>
+    </div>`;
+  }).join("");
+  return `<h2 class="screen-title">Appearance</h2>
+  <div class="card stack">
+    <div>
+      <label class="field">Theme</label>
+      <div class="theme-grid">${themes}</div>
+    </div>
+    <div>
+      <label class="field">Mode</label>
+      <div class="mode-toggle">
+        <button class="${st.mode==='dark'?'on':''}" onclick="setMode('dark')">Dark</button>
+        <button class="${st.mode==='light'?'on':''}" onclick="setMode('light')">Light</button>
+      </div>
+    </div>
+    <div>
+      <label class="field">Arabic text size — <span id="arSizeLbl">${Math.round(st.arSize*10)}pt</span></label>
+      <input type="range" min="1.2" max="2.6" step="0.1" value="${st.arSize}" oninput="setArSize(this.value)">
+      <div class="ar-preview" style="margin-top:10px">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
+    </div>
+    <div><button class="ghost" onclick="go('library')">Done</button></div>
+  </div>`;
+}
+
+/* ============ backup / restore ============ */
+function exportData(){
+  const blob = new Blob([JSON.stringify(S,null,1)],{type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "byheart-backup.json";
+  a.click();
+}
+function importData(){
+  const inp=document.createElement("input"); inp.type="file"; inp.accept=".json,application/json";
+  inp.onchange = () => {
+    const f=inp.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload=()=>{ try{ S=JSON.parse(r.result); S.settings=Object.assign({theme:"ink",mode:"dark",arSize:1.6},S.settings||{}); save(); applySettings(); render(); toast("Backup restored"); }catch(e){ toast("That file couldn't be read"); } };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+/* ============ PWA manifest (inline) ============ */
+(function(){
+  const icon = "data:image/svg+xml," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" rx="96" fill="#0F1322"/><text x="256" y="330" font-family="Georgia,serif" font-size="240" fill="#E4A63C" text-anchor="middle">ب</text></svg>`);
+  const manifest = {
+    name:"ByHeart", short_name:"ByHeart",
+    display:"standalone", start_url:".", scope:".",
+    background_color:"#0F1322", theme_color:"#0F1322",
+    description:"Memorize any text by heart.",
+    icons:[{src:icon, sizes:"512x512", type:"image/svg+xml", purpose:"any"}]
+  };
+  $("manifest-link").href = "data:application/manifest+json,"+encodeURIComponent(JSON.stringify(manifest));
+})();
+
+function afterRender(){}
+applySettings();
+render();
+</script>
+</body>
+</html>
