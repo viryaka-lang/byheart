@@ -9,7 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="Memorize any text — Arabic or any language — with chunking, cloze veils, first-letter cues, blind recall and spaced repetition.">
-<link id="manifest-link" rel="manifest" href="">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -92,8 +94,36 @@ header.top{
   display:flex;align-items:baseline;justify-content:space-between;
   padding:20px 2px 14px;
 }
-.brand{font-family:var(--font-display);font-weight:650;font-size:1.5rem;letter-spacing:.01em}
+.brand{font-family:var(--font-display);font-weight:650;font-size:1.5rem;letter-spacing:.01em;display:flex;align-items:center;gap:9px}
 .brand .dot{color:var(--saffron)}
+.brand .mark{width:26px;height:26px;color:var(--saffron);flex:none}
+button,.tappable{touch-action:manipulation}
+:focus-visible{outline:2px solid var(--saffron);outline-offset:2px;border-radius:6px}
+/* Today strip */
+.today-strip{
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  background:var(--surface);border:1px solid var(--edge);border-radius:var(--radius);
+  padding:12px 16px;margin-bottom:14px;font-size:.9rem;color:var(--paper-dim);
+}
+.today-strip b{color:var(--paper)}
+.today-strip .flame{color:var(--saffron);font-weight:600}
+/* Session summary */
+.summary-card{text-align:center}
+.summary-card .bignum{font-family:var(--font-display);font-size:2.6rem;color:var(--saffron);line-height:1.1}
+/* Compact chunk rows */
+.chunkrow{
+  display:flex;align-items:center;gap:12px;
+  background:var(--surface);border:1px solid var(--edge);border-radius:12px;
+  padding:11px 14px;cursor:pointer;
+}
+.chunkrow:active{background:var(--surface-2)}
+.chunkrow .snippet{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--paper-dim);font-size:.95rem;
+}
+.chunkrow .snippet.rtl{font-family:var(--font-ar);font-size:calc(var(--ar-size)*0.72)}
+.chunkrow .ladder{flex:none}
+.chunkrow .tag{flex:none}
 .due-pill{
   font-size:.8rem;color:var(--on-accent);background:var(--saffron);
   border-radius:999px;padding:2px 10px;font-weight:600;
@@ -264,7 +294,10 @@ input[type=range]{width:100%;accent-color:var(--saffron)}
 <body>
 <div id="app">
   <header class="top">
-    <div class="brand">By<span class="dot">Heart</span></div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M96 156 C96 292 168 342 256 342 C344 342 416 292 416 156" fill="none" stroke="currentColor" stroke-width="44" stroke-linecap="round"/><path d="M256 460 C240 442 208 431 208 404 C208 386 222 374 237 374 C245 374 252 379 256 387 C260 379 267 374 275 374 C290 374 304 386 304 404 C304 431 272 442 256 460 Z" fill="currentColor"/></svg>
+      By<span class="dot">Heart</span>
+    </div>
     <div class="row" style="gap:8px">
       <div id="duePill" class="due-pill zero" onclick="if(dueChunks().length)go('review')">0 due</div>
       <button class="icon" onclick="go('settings')" aria-label="Settings">⚙</button>
@@ -308,6 +341,28 @@ function save(){ store.set("byheart.v1", JSON.stringify(S)); renderDuePill(); }
 const uid = () => Math.random().toString(36).slice(2,10);
 const now = () => Date.now();
 const DAY = 86400000, MIN = 60000;
+
+/* ============ daily log & streak ============ */
+function dayKey(d){ d=d||new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function logActivity(kind){
+  S.log = S.log || {};
+  const k = dayKey();
+  S.log[k] = S.log[k] || {learned:0, reviews:0};
+  S.log[k][kind] = (S.log[k][kind]||0)+1;
+}
+function todayStats(){ return (S.log && S.log[dayKey()]) || {learned:0, reviews:0}; }
+function streak(){
+  if(!S.log) return 0;
+  let n=0; const d=new Date();
+  for(;;){
+    const e = S.log[dayKey(d)];
+    if(e && (e.learned||e.reviews)) { n++; d.setDate(d.getDate()-1); }
+    else if(n===0 && dayKey(d)===dayKey()){ d.setDate(d.getDate()-1); } // today empty so far — check yesterday
+    else break;
+    if(n>3650) break;
+  }
+  return n;
+}
 
 /* ============ language helpers ============ */
 const isArabicText = t => (t.match(/[\u0600-\u06FF]/g)||[]).length > t.length*0.15;
@@ -455,10 +510,20 @@ function viewLibrary(){
     html += `<div class="empty">
       <div class="big">Nothing memorized yet</div>
       Paste a poem, Quran passage, speech, or vocabulary — in any language — and ByHeart will walk you up the ladder until you know it cold.
-      <div style="margin-top:20px"><button class="primary" onclick="go('add')">Add a text</button></div>
+      <div class="row" style="margin-top:20px;justify-content:center">
+        <button class="primary" onclick="go('add')">Add a text</button>
+        <button class="ghost" onclick="createExample()">Try an example</button>
+      </div>
     </div>`;
     return html;
   }
+  const ts = todayStats(), st = streak(), due = dueChunks().length;
+  html += `<div class="today-strip">
+    ${st?`<span class="flame">🔥 ${st}-day streak</span>`:`<span>Start your streak today</span>`}
+    <span><b>${ts.learned}</b> learned today</span>
+    <span><b>${ts.reviews}</b> reviews done</span>
+    ${due?`<span><b>${due}</b> waiting</span>`:""}
+  </div>`;
   html += `<div class="stack">`;
   for(const t of S.texts){
     const total=t.chunks.length;
@@ -530,6 +595,13 @@ function loadExample(){
   $("fBody").value = "قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾";
   autoDir($("fBody")); previewChunks();
 }
+function createExample(){
+  const body = "قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾";
+  const chunks = chunkQuran(body, 8).map((text,i)=>({id:uid(), i, text, stage:0, ef:2.5, reps:0, interval:0, due:0}));
+  const t = { id:uid(), title:"Surah Al-Ikhlas", lang:"ar", rtl:true, quran:true, chunks, created:now() };
+  S.texts.push(t); save();
+  startTrain(t.id, chunks[0].id);
+}
 function autoDir(el){
   el.classList.toggle("rtl", isArabicText(el.value));
   const q = hasAyahMarks(el.value);
@@ -555,28 +627,38 @@ function createText(){
 
 /* ============ Text overview ============ */
 function getText(id){ return S.texts.find(t=>t.id===id); }
+let pendingDel = null;
 function viewText(id){
   const t = getText(id); if(!t) return viewLibrary();
   const next = t.chunks.find(c=>c.stage<5);
+  const delBtn = pendingDel===t.id
+    ? `<button class="ghost danger" onclick="reallyDelete('${t.id}')">Really delete? Tap again</button>`
+    : `<button class="ghost danger" onclick="askDelete('${t.id}')">Delete</button>`;
   let html = `<h2 class="screen-title ${t.rtl?'rtl':''}">${esc(t.title)}</h2>
   <div class="row" style="margin-bottom:14px">
     ${next?`<button class="primary" onclick="startTrain('${t.id}','${next.id}')">Continue learning</button>`:""}
     <button class="ghost" onclick="reciteAll('${t.id}')">Recite whole text</button>
-    <button class="ghost danger" onclick="deleteText('${t.id}')">Delete</button>
+    ${delBtn}
   </div>
-  <div class="stack">`;
+  <div class="stack" style="gap:8px">`;
   for(const c of t.chunks){
     const due = c.stage>=5 && c.due<=now();
-    html += `<div class="card tappable" onclick="startTrain('${t.id}','${c.id}')">
-      <div class="row spread" style="margin-bottom:8px">
-        <span class="stage-name">${STAGES[Math.min(c.stage,5)]}</span>
-        ${due?`<span class="tag due">due</span>`:c.stage>=5?`<span class="tag">next in ${fmtIn(c.due)}</span>`:""}
-      </div>
+    html += `<div class="chunkrow" onclick="startTrain('${t.id}','${c.id}')">
       ${ladder(c)}
-      <div class="passage ${t.rtl?'rtl':''}" style="font-size:${t.rtl?'1.3rem':'1rem'};line-height:1.9;margin-top:8px;color:var(--paper-dim)">${esc(shorten(c.text,90))}</div>
+      <span class="snippet ${t.rtl?'rtl':''}">${esc(shorten(c.text,80))}</span>
+      ${due?`<span class="tag due">due</span>`:c.stage>=5?`<span class="tag">${fmtIn(c.due)}</span>`:`<span class="tag">${STAGES[Math.min(c.stage,5)]}</span>`}
     </div>`;
   }
   return html+`</div>`;
+}
+function askDelete(id){
+  pendingDel = id; render();
+  setTimeout(()=>{ if(pendingDel===id){ pendingDel=null; if(route.name==="text") render(); } }, 4000);
+}
+function reallyDelete(id){
+  pendingDel = null;
+  S.texts = S.texts.filter(t=>t.id!==id); save(); go("library");
+  toast("Text deleted");
 }
 function ladder(c){
   let h = `<div class="ladder">`;
@@ -590,10 +672,6 @@ function fmtIn(ts){
   if(d<=0) return "now";
   if(d<DAY) return Math.max(1,Math.round(d/3600000))+"h";
   return Math.round(d/DAY)+"d";
-}
-function deleteText(id){
-  if(!confirm("Delete this text and all its progress?")) return;
-  S.texts = S.texts.filter(t=>t.id!==id); save(); go("library");
 }
 
 /* ============ Trainer ============ */
@@ -726,7 +804,7 @@ function doGrade(g){
   buzz();
   if(T.mode==="learn"){
     if(g>=2){ // graduated!
-      c.stage=5; gradeChunk(c,g); save();
+      c.stage=5; gradeChunk(c,g); logActivity("learned"); save();
       const next = t.chunks.find(x=>x.stage<5);
       toast("By heart ✓ — review scheduled in "+fmtIn(c.due));
       if(next){ T={textId:t.id, chunkId:next.id, mode:"learn", revealed:false, hint:false, peeks:0}; render(); }
@@ -737,7 +815,7 @@ function doGrade(g){
       toast(g===0?"No problem — back to a lighter veil":"Back to first letters");
     }
   } else if(T.mode==="recite"){ // sequential full-text recitation
-    if(c.stage>=5){ gradeChunk(c,g); if(g===0) c.stage=3; }
+    if(c.stage>=5){ gradeChunk(c,g); if(g===0) c.stage=3; logActivity("reviews"); }
     save();
     const next = t.chunks[c.i+1];
     if(next){ T={textId:t.id, chunkId:next.id, mode:"recite", revealed:false, hint:false, peeks:0}; render(); }
@@ -745,15 +823,28 @@ function doGrade(g){
   } else { // review
     gradeChunk(c,g);
     if(g===0) c.stage=3; // will relearn via first letters then blind
+    logActivity("reviews");
+    R.done++; if(g===0) R.again++;
     save();
     nextReview();
   }
 }
 
 /* ============ Review queue ============ */
+let R = {done:0, again:0};
 function viewReview(){
   const due = dueChunks();
   if(!due.length){
+    if(R.done>0){
+      const html = `<h2 class="screen-title">Review</h2>
+      <div class="card summary-card">
+        <div class="bignum">${R.done}</div>
+        <p>review${R.done===1?"":"s"} completed${R.again?` — ${R.again} coming back in 10 minutes`:" — all remembered"} 🎉</p>
+        ${streak()?`<p class="muted" style="margin-top:6px">🔥 ${streak()}-day streak</p>`:""}
+        <div style="margin-top:14px"><button class="primary" onclick="R={done:0,again:0};go('library')">Done</button></div>
+      </div>`;
+      return html;
+    }
     const soon = S.texts.flatMap(t=>t.chunks).filter(c=>c.stage>=5).sort((a,b)=>a.due-b.due)[0];
     return `<h2 class="screen-title">Review</h2>
     <div class="empty"><div class="big">Nothing due right now</div>
@@ -763,12 +854,12 @@ function viewReview(){
   return `<h2 class="screen-title">Review — ${due.length} due</h2>
   <div class="card">
     <p>Each card: recite from memory, reveal, grade yourself honestly. "Again" brings it back in 10 minutes; "Easy" pushes it far into the future.</p>
-    <div style="margin-top:12px"><button class="primary" onclick="nextReview()">Start reviewing</button></div>
+    <div style="margin-top:12px"><button class="primary" onclick="R={done:0,again:0};nextReview()">Start reviewing</button></div>
   </div>`;
 }
 function nextReview(){
   const due = dueChunks();
-  if(!due.length){ toast("Review session complete 🎉"); go("review"); return; }
+  if(!due.length){ go("review"); return; }
   const {t,c} = due[0];
   T = {textId:t.id, chunkId:c.id, mode:"review", revealed:false, hint:false, peeks:0};
   go("train");
@@ -857,21 +948,32 @@ function importData(){
   inp.click();
 }
 
-/* ============ PWA manifest (inline) ============ */
-(function(){
-  const icon = "data:image/svg+xml," + encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" rx="96" fill="#0F1322"/><text x="256" y="330" font-family="Georgia,serif" font-size="240" fill="#E4A63C" text-anchor="middle">ب</text></svg>`);
-  const manifest = {
-    name:"ByHeart", short_name:"ByHeart",
-    display:"standalone", start_url:".", scope:".",
-    background_color:"#0F1322", theme_color:"#0F1322",
-    description:"Memorize any text by heart.",
-    icons:[{src:icon, sizes:"512x512", type:"image/svg+xml", purpose:"any"}]
-  };
-  $("manifest-link").href = "data:application/manifest+json,"+encodeURIComponent(JSON.stringify(manifest));
-})();
+/* ============ Service worker: offline support & installability ============ */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(()=>{ /* e.g. opened as a local file — app still works, just not offline-installable */ });
+  });
+}
 
 function afterRender(){}
+/* keyboard shortcuts (desktop): Space/Enter reveal or advance · 1-4 grade · H hint */
+document.addEventListener("keydown", e=>{
+  if(route.name!=="train" || !T) return;
+  const tag=(e.target.tagName||"").toLowerCase();
+  if(tag==="input"||tag==="textarea"||tag==="select") return;
+  const t=getText(T.textId); if(!t) return;
+  const c=t.chunks.find(x=>x.id===T.chunkId); if(!c) return;
+  const stage=(T.mode==="review"||T.mode==="recite")?4:Math.min(c.stage,4);
+  if(e.key===" "||e.key==="Enter"){
+    e.preventDefault();
+    if(stage<4){ advanceStage(1); }
+    else if(!T.revealed){ T.revealed=true; render(); }
+  } else if(stage>=4 && T.revealed && ["1","2","3","4"].includes(e.key)){
+    doGrade(parseInt(e.key,10)-1);
+  } else if(stage>=4 && !T.revealed && (e.key==="h"||e.key==="H")){
+    T.hint=true; render();
+  }
+});
 applySettings();
 render();
 </script>
