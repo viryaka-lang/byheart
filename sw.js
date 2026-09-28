@@ -1,6 +1,6 @@
 /* ByHeart service worker — offline-first app shell.
    To ship an update: change the VERSION string and redeploy. */
-const VERSION = "byheart-v1";
+const VERSION = "byheart-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -9,6 +9,16 @@ const SHELL = [
   "./icon-512.png",
   "./icon-maskable-512.png"
 ];
+
+// Cache a response only if it's usable: never store a 404/500 as the offline copy.
+// Cross-origin font files come back "opaque" (status unreadable), which is expected.
+function stash(key, res){
+  if(res && (res.ok || res.type === "opaque")){
+    const copy = res.clone();
+    caches.open(VERSION).then(c => c.put(key, copy));
+  }
+  return res;
+}
 
 self.addEventListener("install", e => {
   e.waitUntil(
@@ -33,11 +43,7 @@ self.addEventListener("fetch", e => {
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req)
-        .then(res => {
-          const copy = res.clone();
-          caches.open(VERSION).then(c => c.put("./index.html", copy));
-          return res;
-        })
+        .then(res => res.ok ? stash("./index.html", res) : res)
         .catch(() => caches.match("./index.html"))
     );
     return;
@@ -45,24 +51,12 @@ self.addEventListener("fetch", e => {
 
   // Google Fonts: cache first, fetch and store when missing (works offline after first load)
   if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
-    e.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(VERSION).then(c => c.put(req, copy));
-        return res;
-      }).catch(() => hit))
-    );
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => stash(req, res))));
     return;
   }
 
   // Same-origin assets: cache first, network fallback
   if (url.origin === location.origin) {
-    e.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(VERSION).then(c => c.put(req, copy));
-        return res;
-      }))
-    );
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => stash(req, res))));
   }
 });

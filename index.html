@@ -288,6 +288,11 @@ input[type=range]{width:100%;accent-color:var(--saffron)}
 .continue-chip:active{background:var(--saffron);color:var(--on-accent)}
 .peekmeter{font-size:.8rem;color:var(--paper-dim);margin-top:10px}
 .peekmeter b{color:var(--saffron)}
+.passage.tight .w:not(.veiled){padding-left:0;padding-right:0}
+button.linkish{
+  background:none;border:none;padding:0;cursor:pointer;
+  color:var(--saffron);font:inherit;text-decoration:underline;text-underline-offset:3px;
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -299,7 +304,7 @@ input[type=range]{width:100%;accent-color:var(--saffron)}
       By<span class="dot">Heart</span>
     </div>
     <div class="row" style="gap:8px">
-      <div id="duePill" class="due-pill zero" onclick="if(dueChunks().length)go('review')">0 due</div>
+      <div id="duePill" class="due-pill zero" role="button" tabindex="0" onclick="if(dueChunks().length)go('review')">0 due</div>
       <button class="icon" onclick="go('settings')" aria-label="Settings">⚙</button>
     </div>
   </header>
@@ -320,27 +325,73 @@ input[type=range]{width:100%;accent-color:var(--saffron)}
 const mem = {};
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return mem[k] ?? null; } },
-  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
+  set(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ mem[k]=v; return false; } }
 };
 
 /* ============ state ============ */
-const DEFAULT_STATE = { texts: [], active:null, settings:{theme:"ink", mode:"dark", arSize:1.6} };
-let S = load();
+const KEY = "byheart.v1";
+const LANGS = ["","ar","he","zh","ja","ko","ru","th"];
+let S; // loaded at startup (bottom of script), once every helper is defined
 function load(){
-  try{
-    const raw = store.get("byheart.v1");
-    if(raw){
-      const s = JSON.parse(raw);
-      s.settings = Object.assign({theme:"ink", mode:"dark", arSize:1.6}, s.settings||{});
-      return s;
-    }
-  }catch(e){}
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+  const raw = store.get(KEY);
+  if(!raw) return normalizeState({texts:[]});
+  try{ return normalizeState(JSON.parse(raw)); }
+  catch(e){
+    store.set(KEY+".corrupt", raw); // keep unreadable data rather than overwrite it on the next save
+    return normalizeState({texts:[]});
+  }
 }
-function save(){ store.set("byheart.v1", JSON.stringify(S)); renderDuePill(); }
+/* Validate and repair state from storage or a backup file, so a bad file can't break the app */
+function normalizeState(s){
+  if(!s || typeof s!=="object" || !Array.isArray(s.texts)) throw new Error("not a ByHeart backup");
+  const num = (x,d) => (typeof x==="number" && isFinite(x)) ? x : d;
+  const seen = new Set();
+  const cleanId = x => {
+    const id = (typeof x==="string" && /^[a-z0-9]{1,24}$/i.test(x) && !seen.has(x)) ? x : uid();
+    seen.add(id); return id;
+  };
+  const texts = [];
+  for(const t of s.texts){
+    if(!t || !Array.isArray(t.chunks)) continue;
+    const chunks = t.chunks
+      .filter(c => c && typeof c.text==="string" && c.text.trim())
+      .map((c,i) => ({
+        id:cleanId(c.id), i, text:c.text,
+        stage:Math.max(0, Math.min(5, Math.floor(num(c.stage,0)))),
+        ef:Math.max(1.3, Math.min(2.8, num(c.ef,2.5))),
+        reps:Math.max(0, num(c.reps,0)), interval:Math.max(0, num(c.interval,0)), due:num(c.due,0)
+      }));
+    for(const c of chunks) if(c.stage>=5 && !(c.due>0)) c.due = now(); // learned but unscheduled: review now
+    if(!chunks.length) continue;
+    const lang = LANGS.includes(t.lang) ? t.lang : detectLang(chunks.map(c=>c.text).join(" "));
+    texts.push({ id:cleanId(t.id), title:String(t.title||"Untitled").slice(0,200), lang, rtl:isRTL(lang),
+      quran:!!t.quran, chunks, created:num(t.created,now()) });
+  }
+  const log = {};
+  if(s.log && typeof s.log==="object")
+    for(const [k,v] of Object.entries(s.log))
+      if(/^\d{4}-\d{2}-\d{2}$/.test(k) && v && typeof v==="object")
+        log[k] = {learned:num(v.learned,0), reviews:num(v.reviews,0)};
+  const st = s.settings || {};
+  return { texts, log, settings:{
+    theme: THEMES.some(t=>t.id===st.theme) ? st.theme : "ink",
+    mode: st.mode==="light" ? "light" : "dark",
+    arSize: Math.max(1.2, Math.min(2.6, num(st.arSize,1.6)))
+  }};
+}
+let saveWarned = false;
+function save(){
+  if(!store.set(KEY, JSON.stringify(S)) && !saveWarned){
+    saveWarned = true;
+    toast("Couldn't save on this device — use Backup to keep your progress");
+  }
+  renderDuePill();
+}
+// Ask the browser not to evict our data under storage pressure (silently granted for installed apps)
+function requestPersist(){ try{ navigator.storage.persist().catch(()=>{}); }catch(e){} }
 const uid = () => Math.random().toString(36).slice(2,10);
 const now = () => Date.now();
-const DAY = 86400000, MIN = 60000;
+const DAY = 86400000, HOUR = 3600000, MIN = 60000;
 
 /* ============ daily log & streak ============ */
 function dayKey(d){ d=d||new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -365,39 +416,91 @@ function streak(){
 }
 
 /* ============ language helpers ============ */
+const ARABIC_CHAR = /[\u0600-\u06FF]/;
+const ZWJ = "\u200D"; // zero-width joiner
 const isArabicText = t => (t.match(/[\u0600-\u06FF]/g)||[]).length > t.length*0.15;
 function detectLang(t){
   if(isArabicText(t)) return "ar";
   if(/[\u0590-\u05FF]/.test(t)) return "he";
+  if(/[\u3040-\u30FF]/.test(t)) return "ja"; // kana before kanji: Japanese also uses CJK ideographs
   if(/[\u4E00-\u9FFF]/.test(t)) return "zh";
-  if(/[\u3040-\u30FF]/.test(t)) return "ja";
   if(/[\uAC00-\uD7AF]/.test(t)) return "ko";
+  if(/[\u0E00-\u0E7F]/.test(t)) return "th";
   if(/[\u0400-\u04FF]/.test(t)) return "ru";
   return "";
 }
 const isRTL = lang => lang==="ar"||lang==="he";
 
+/* Scripts written without spaces between words are split with Intl.Segmenter */
+const SPACELESS = new Set(["zh","ja","th"]);
+const joiner = lang => SPACELESS.has(lang) ? "" : " ";
+const segmenters = {};
+function segmenter(lang, granularity){
+  const k = lang+"|"+granularity;
+  if(!(k in segmenters)){
+    try{ segmenters[k] = new Intl.Segmenter(lang||undefined, {granularity}); }catch(e){ segmenters[k] = null; }
+  }
+  return segmenters[k];
+}
+function tokenize(text, lang){
+  if(!SPACELESS.has(lang)) return text.split(/\s+/).filter(Boolean);
+  const seg = segmenter(lang, "word");
+  // punctuation and spaces stay as their own tokens so the text re-joins exactly
+  return seg ? [...seg.segment(text)].map(s=>s.segment) : [...text];
+}
+const isWordToken = w => /[\p{L}\p{N}]/u.test(w);
+const countWords = (text, lang) => tokenize(text, lang).filter(w=>isWordToken(w) && !isAyahMark(w)).length;
+function graphemes(w){
+  const seg = segmenter("", "grapheme"); // keeps Arabic harakat and accents with their letter
+  return seg ? [...seg.segment(w)].map(s=>s.segment) : [...w];
+}
+
 /* ============ chunking ============ */
-function chunkText(raw, targetWords){
-  const text = raw.replace(/\r/g,"").trim();
-  // split into sentence-ish units: newlines first, then sentence punctuation (Latin + Arabic)
-  const lines = text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
-  let units = [];
-  for(const line of lines){
-    const parts = line.split(/(?<=[.!?؟।۔…؛;:])\s+/).map(s=>s.trim()).filter(Boolean);
-    units.push(...(parts.length?parts:[line]));
-  }
-  // merge units into chunks near targetWords
-  const chunks=[]; let cur=[];
-  const wc = s => s.split(/\s+/).filter(Boolean).length;
-  let curWc=0;
+// Pack units (sentences, verses) into chunks near targetWords, never splitting a unit
+function packUnits(units, targetWords, lang){
+  const chunks=[], J=joiner(lang);
+  let cur=[], curWc=0;
+  const flush = () => { if(cur.length) chunks.push(cur.join(J)); cur=[]; curWc=0; };
   for(const u of units){
-    const w = wc(u);
-    if(curWc>0 && curWc + w > targetWords*1.4){ chunks.push(cur.join(" ")); cur=[u]; curWc=w; }
-    else { cur.push(u); curWc+=w; if(curWc>=targetWords){ chunks.push(cur.join(" ")); cur=[]; curWc=0; } }
+    const w = countWords(u, lang);
+    if(w===0 && !cur.length && chunks.length){ chunks[chunks.length-1] += J+u; continue; } // stray mark
+    if(curWc>0 && curWc + w > targetWords*1.4) flush();
+    cur.push(u); curWc += w;
+    if(curWc >= targetWords) flush();
   }
-  if(cur.length) chunks.push(cur.join(" "));
+  flush();
   return chunks;
+}
+// A unit far over the target is broken at commas first, then into even runs of words
+function splitLong(unit, targetWords, lang){
+  const max = targetWords*1.6, J = joiner(lang);
+  if(countWords(unit, lang) <= max) return [unit];
+  const out = [];
+  for(const part of unit.split(/(?<=[,،])\s+|(?<=[、，])\s*/)){
+    const p = part.trim(); if(!p) continue;
+    const n = countWords(p, lang);
+    if(n <= max){ out.push(p); continue; }
+    const size = Math.ceil(n / Math.ceil(n/targetWords));
+    let buf=[], bw=0;
+    for(const tok of tokenize(p, lang)){
+      buf.push(tok);
+      if(isWordToken(tok) && ++bw >= size){ out.push(buf.join(J).trim()); buf=[]; bw=0; }
+    }
+    const rest = buf.join(J).trim();
+    if(rest) out.push(rest);
+  }
+  return out;
+}
+function chunkText(raw, targetWords, lang){
+  const text = raw.replace(/\r/g,"").trim();
+  // sentence-ish units: newlines first, then sentence punctuation (Latin, Arabic, Devanagari, CJK)
+  const units = [];
+  for(const line of text.split(/\n+/)){
+    for(const s of line.trim().split(/(?<=[.!?؟।۔…؛;:])\s+|(?<=[。！？；])\s*/)){
+      if(s.trim()) units.push(...splitLong(s.trim(), targetWords, lang));
+    }
+  }
+  return packUnits(units, targetWords, lang);
 }
 
 /* ============ Quran mode: verse-aware chunking ============ */
@@ -426,16 +529,12 @@ function splitVerses(raw){
 }
 function chunkQuran(raw, targetWords){
   const verses = splitVerses(raw);
-  if(!verses.length) return chunkText(raw, targetWords);
-  const wc = s => s.split(/\s+/).filter(w=>w && !isAyahMark(w)).length;
-  const chunks=[]; let cur=[]; let curWc=0;
-  for(const v of verses){
-    const w = wc(v);
-    if(curWc>0 && curWc + w > targetWords*1.4){ chunks.push(cur.join(" ")); cur=[v]; curWc=w; }
-    else { cur.push(v); curWc+=w; if(curWc>=targetWords){ chunks.push(cur.join(" ")); cur=[]; curWc=0; } }
-  }
-  if(cur.length) chunks.push(cur.join(" "));
-  return chunks; // a verse is never split across two chunks
+  if(!verses.length) return chunkText(raw, targetWords, "ar");
+  // a verse is only broken when very long, and then only at a Quranic pause mark (waqf ۖ ۗ ۚ ۛ …)
+  const units = verses.flatMap(v => countWords(v,"ar") > targetWords*2
+    ? v.split(/(?<=[\u06D6-\u06DC])\s+/).filter(s=>s.trim())
+    : [v]);
+  return packUnits(units, targetWords, "ar");
 }
 
 /* ============ SRS (simplified SM-2) ============ */
@@ -452,11 +551,12 @@ function gradeChunk(c, g){ // g: 0 again, 1 hard, 2 good, 3 easy
     c.due = now() + c.interval*DAY;
   }
 }
+const isDue = (c, t0=now()) => c.stage>=5 && c.due>0 && c.due<=t0;
 function dueChunks(){
-  const out=[];
+  const out=[], t0=now();
   for(const t of S.texts) for(const c of t.chunks)
-    if(c.stage>=5 && c.due && c.due<=now()) out.push({t,c});
-  return out;
+    if(isDue(c,t0)) out.push({t,c});
+  return out.sort((a,b)=>a.c.due-b.c.due); // most overdue first
 }
 
 /* ============ UI helpers ============ */
@@ -478,9 +578,8 @@ const STAGES = ["Read","Veil ¼","Veil ½","First letters","By heart","Reviewing
 let route = {name:"library"};
 function go(name, params, opts){
   route = Object.assign({name}, params||{});
-  if(!(opts&&opts.pop)){
-    try{ history.pushState(route, "", "#"+name); }catch(e){}
-  }
+  // replace: step within a flow (e.g. review cards) without piling up Back-button entries
+  try{ history[opts&&opts.replace ? "replaceState" : "pushState"](route, "", "#"+name); }catch(e){}
   render();
 }
 window.addEventListener("popstate", e=>{
@@ -514,6 +613,7 @@ function viewLibrary(){
         <button class="primary" onclick="go('add')">Add a text</button>
         <button class="ghost" onclick="createExample()">Try an example</button>
       </div>
+      <p style="margin-top:18px">Moving from another device? <button class="linkish" onclick="importData()">Restore a backup</button></p>
     </div>`;
     return html;
   }
@@ -528,13 +628,13 @@ function viewLibrary(){
   for(const t of S.texts){
     const total=t.chunks.length;
     const learned=t.chunks.filter(c=>c.stage>=5).length;
-    const due=t.chunks.filter(c=>c.stage>=5 && c.due<=now()).length;
+    const due=t.chunks.filter(c=>isDue(c)).length;
     const pct = total? Math.round(100*t.chunks.reduce((a,c)=>a+Math.min(c.stage,5),0)/(5*total)) :0;
     const next = t.chunks.find(c=>c.stage<5);
     const action = next
       ? `<button class="continue-chip" onclick="event.stopPropagation();startTrain('${t.id}','${next.id}')">Continue →</button>`
       : due ? `<button class="continue-chip" onclick="event.stopPropagation();go('review')">Review ${due} →</button>` : "";
-    html += `<div class="card tappable" onclick="go('text',{id:'${t.id}'})">
+    html += `<div class="card tappable" role="button" tabindex="0" onclick="go('text',{id:'${t.id}'})">
       <div class="row spread">
         <strong class="${t.rtl?'rtl':''}" style="font-size:1.05rem">${esc(t.title)}</strong>
         ${due?`<span class="tag due">${due} due</span>`:`<span class="tag">${learned}/${total} by heart</span>`}
@@ -558,15 +658,15 @@ function viewLibrary(){
 function viewAdd(){
   return `<h2 class="screen-title">New text</h2>
   <div class="card stack">
-    <div><label class="field">Title</label><input type="text" id="fTitle" placeholder="e.g. Surah Al-Mulk · If— by Kipling"></div>
-    <div><label class="field">Text to memorize</label>
-      <textarea id="fBody" placeholder="Paste the full text here — Arabic or any language. Line breaks and verse marks are used to split it into small chunks." oninput="autoDir(this);previewChunks()"></textarea></div>
-    <div class="row" style="gap:8px">
-      <input type="checkbox" id="fQuran" style="width:20px;height:20px;accent-color:var(--saffron)" onchange="previewChunks()">
-      <label for="fQuran" style="cursor:pointer">Quran mode — split by ayah, keep verse numbers, never cut inside a verse</label>
+    <div><label class="field" for="fTitle">Title</label><input type="text" id="fTitle" dir="auto" maxlength="200" placeholder="e.g. Surah Al-Mulk · If— by Kipling"></div>
+    <div><label class="field" for="fBody">Text to memorize</label>
+      <textarea id="fBody" dir="auto" placeholder="Paste the full text here — Arabic or any language. Line breaks and verse marks are used to split it into small chunks." oninput="autoDir(this);previewChunks()"></textarea></div>
+    <div class="row" style="gap:8px;flex-wrap:nowrap">
+      <input type="checkbox" id="fQuran" style="width:20px;height:20px;flex:none;accent-color:var(--saffron)" onchange="previewChunks()">
+      <label for="fQuran" style="cursor:pointer">Quran mode — split by ayah and keep verse numbers; a long verse is only divided at its pause marks</label>
     </div>
     <p class="hint" id="quranHint" style="display:none;margin-top:0">Ayah markers detected — Quran mode switched on.</p>
-    <div><label class="field">Chunk size (words per piece — smaller is easier)</label>
+    <div><label class="field" for="fSize">Chunk size (words per piece — smaller is easier)</label>
       <select id="fSize" onchange="previewChunks()">
         <option value="8">Small (~8 words) — dense or sacred texts</option>
         <option value="14" selected>Medium (~14 words)</option>
@@ -587,20 +687,27 @@ function previewChunks(){
   if(!body){ el.textContent=""; return; }
   const size=parseInt($("fSize").value,10);
   const q=$("fQuran").checked;
-  const n=(q?chunkQuran(body,size):chunkText(body,size)).length;
+  const n=(q?chunkQuran(body,size):chunkText(body,size,detectLang(body))).length;
   el.textContent = `This will become ${n} chunk${n===1?"":"s"} — roughly ${n} short learning session${n===1?"":"s"}.`;
 }
+const EXAMPLE = {
+  title:"Surah Al-Ikhlas",
+  body:"قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾"
+};
+const newChunks = pieces => pieces.map((text,i)=>({id:uid(), i, text, stage:0, ef:2.5, reps:0, interval:0, due:0}));
+function addText(title, lang, quran, pieces){
+  const t = { id:uid(), title, lang, rtl:isRTL(lang), quran, chunks:newChunks(pieces), created:now() };
+  S.texts.push(t); save(); requestPersist();
+  return t;
+}
 function loadExample(){
-  $("fTitle").value = "Surah Al-Ikhlas";
-  $("fBody").value = "قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾";
+  $("fTitle").value = EXAMPLE.title;
+  $("fBody").value = EXAMPLE.body;
   autoDir($("fBody")); previewChunks();
 }
 function createExample(){
-  const body = "قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾";
-  const chunks = chunkQuran(body, 8).map((text,i)=>({id:uid(), i, text, stage:0, ef:2.5, reps:0, interval:0, due:0}));
-  const t = { id:uid(), title:"Surah Al-Ikhlas", lang:"ar", rtl:true, quran:true, chunks, created:now() };
-  S.texts.push(t); save();
-  startTrain(t.id, chunks[0].id);
+  const t = addText(EXAMPLE.title, "ar", true, chunkQuran(EXAMPLE.body, 8));
+  startTrain(t.id, t.chunks[0].id);
 }
 function autoDir(el){
   el.classList.toggle("rtl", isArabicText(el.value));
@@ -615,13 +722,8 @@ function createText(){
   const size = parseInt($("fSize").value,10);
   const lang = detectLang(body);
   const quran = $("fQuran").checked;
-  const pieces = quran ? chunkQuran(body, size) : chunkText(body, size);
-  const chunks = pieces.map((text,i)=>({
-    id:uid(), i, text, stage:0, ef:2.5, reps:0, interval:0, due:0
-  }));
-  const t = { id:uid(), title, lang, rtl:isRTL(lang), quran, chunks, created:now() };
-  S.texts.push(t); save();
-  toast(chunks.length+(quran?" verse-aligned chunks created":" chunks created"));
+  const t = addText(title, lang, quran, quran ? chunkQuran(body, size) : chunkText(body, size, lang));
+  toast(t.chunks.length+(quran?" verse-aligned chunks created":" chunks created"));
   go("text",{id:t.id});
 }
 
@@ -642,8 +744,8 @@ function viewText(id){
   </div>
   <div class="stack" style="gap:8px">`;
   for(const c of t.chunks){
-    const due = c.stage>=5 && c.due<=now();
-    html += `<div class="chunkrow" onclick="startTrain('${t.id}','${c.id}')">
+    const due = isDue(c);
+    html += `<div class="chunkrow" role="button" tabindex="0" onclick="startTrain('${t.id}','${c.id}')">
       ${ladder(c)}
       <span class="snippet ${t.rtl?'rtl':''}">${esc(shorten(c.text,80))}</span>
       ${due?`<span class="tag due">due</span>`:c.stage>=5?`<span class="tag">${fmtIn(c.due)}</span>`:`<span class="tag">${STAGES[Math.min(c.stage,5)]}</span>`}
@@ -670,56 +772,92 @@ function shorten(s,n){ return s.length>n ? s.slice(0,n)+"…" : s; }
 function fmtIn(ts){
   const d = ts-now();
   if(d<=0) return "now";
-  if(d<DAY) return Math.max(1,Math.round(d/3600000))+"h";
-  return Math.round(d/DAY)+"d";
+  if(d<HOUR) return Math.max(1,Math.round(d/MIN))+" min";
+  const h = Math.round(d/HOUR);
+  return h<24 ? h+"h" : Math.max(1,Math.round(d/DAY))+"d";
 }
 
 /* ============ Trainer ============ */
-let T = null; // {textId, chunkId, mode:'learn'|'review', revealed:false}
-function startTrain(textId, chunkId){ T={textId,chunkId,mode:"learn",revealed:false,hint:false,peeks:0}; go("train"); }
+/* T is the current attempt. Modes:
+   learn    — climb the ladder on a new chunk
+   review   — the due queue
+   recite   — the whole text in order
+   practice — an already-learned chunk, off schedule */
+let T = null;
+const attempt = (textId, chunkId, mode) => ({textId, chunkId, mode, revealed:false, hint:false, peeks:0});
+const getChunk = (t, id) => t && t.chunks.find(c=>c.id===id);
+const trainStage = c => T.mode==="learn" ? Math.min(c.stage,4) : 4;
+function startTrain(textId, chunkId){
+  const c = getChunk(getText(textId), chunkId);
+  T = attempt(textId, chunkId, c && c.stage>=5 ? "practice" : "learn");
+  go("train");
+}
 
-function tokenize(text){ return text.split(/\s+/).filter(Boolean); }
+const passageCls = t => (t.rtl?"rtl ":"") + (SPACELESS.has(t.lang)?"tight":"");
 function wSpan(w, quran){
   if(quran && isAyahMark(w)) return `<span class="ayah">${esc(w)}</span>`;
+  if(!w.trim()) return w; // whitespace token in spaceless scripts
   return `<span class="w">${esc(w)}</span>`;
 }
 function pickHidden(words, frac, quran){
-  const eligible = words.map((w,i)=>i).filter(i=>!(quran && isAyahMark(words[i])));
+  const eligible = words.map((w,i)=>i).filter(i=>isWordToken(words[i]) && !(quran && isAyahMark(words[i])));
   const n = Math.max(1, Math.round(eligible.length*frac));
   for(let i=eligible.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [eligible[i],eligible[j]]=[eligible[j],eligible[i]]; }
   return new Set(eligible.slice(0,n));
 }
+// "صَبَرُوا۟" → "صَ···": first letter (with its vowel mark), dots, trailing punctuation kept as a cue
+function firstLetterCue(w){
+  const g = graphemes(w);
+  const a = Math.max(0, g.findIndex(isWordToken));
+  let z = g.length; while(z > a+1 && !isWordToken(g[z-1])) z--;
+  // Arabic: a zero-width joiner keeps the first letter in its connected (initial) form
+  const zwj = z > a+1 && ARABIC_CHAR.test(g[a]) ? ZWJ : "";
+  return esc(g.slice(0,a+1).join(""))+zwj
+    + `<span class="rest">${"·".repeat(Math.max(1,Math.min(z-a-1,6)))}</span>`
+    + esc(g.slice(z).join(""));
+}
+// Spaceless scripts: most words are one or two characters, so cue the first character of each clause
+function clauseCues(words){
+  let clauseStart = true;
+  return words.map(w=>{
+    if(!isWordToken(w)){ if(w.trim()) clauseStart = true; return wSpan(w,false); }
+    const g = graphemes(w);
+    const html = `<span class="w fl">${clauseStart?esc(g[0]):""}<span class="rest">${"·".repeat(g.length-(clauseStart?1:0))}</span></span>`;
+    clauseStart = false;
+    return html;
+  }).join("");
+}
 function firstLetters(t,c){
-  const words = tokenize(c.text);
-  const q = !!t.quran;
-  return `<div class="passage ${t.rtl?'rtl':''}">${words.map(w=>{
-    if(q && isAyahMark(w)) return `<span class="ayah">${esc(w)}</span>`;
-    const chars=[...w];
-    return `<span class="w fl">${esc(chars[0]||"")}<span class="rest">${"·".repeat(Math.max(1,Math.min(chars.length-1,6)))}</span></span>`;
-  }).join(" ")}</div>`;
+  const q = !!t.quran, words = tokenize(c.text, t.lang);
+  const body = SPACELESS.has(t.lang) ? clauseCues(words) : words.map(w=>
+    !isWordToken(w) || (q && isAyahMark(w)) ? wSpan(w,q) : `<span class="w fl">${firstLetterCue(w)}</span>`
+  ).join(" ");
+  return `<div class="passage ${passageCls(t)}">${body}</div>`;
 }
 function peek(el){
   el.classList.toggle("peeked");
-  if(el.classList.contains("peeked")){
+  const on = el.classList.contains("peeked");
+  el.setAttribute("aria-label", on ? el.textContent : "hidden word");
+  if(on){
     T.peeks = (T.peeks||0)+1;
     const m=$("peekMeter");
     if(m) m.innerHTML = "Peeks this attempt: <b>"+T.peeks+"</b>";
   }
 }
 function renderPassage(t, c, stage){
-  const words = tokenize(c.text);
-  const rtl = t.rtl ? "rtl":"";
+  const words = tokenize(c.text, t.lang);
+  const cls = passageCls(t), J = joiner(t.lang);
   const q = !!t.quran;
   if(stage===0 || stage>=4 && T.revealed){ // full text
-    return `<div class="passage ${rtl}">${words.map(w=>wSpan(w,q)).join(" ")}</div>`;
+    return `<div class="passage ${cls}">${words.map(w=>wSpan(w,q)).join(J)}</div>`;
   }
   if(stage===1||stage===2){
     const frac = stage===1?0.3:0.6;
     const hidden = pickHidden(words, frac, q);
-    return `<div class="passage ${rtl}">${words.map((w,i)=>
+    return `<div class="passage ${cls}">${words.map((w,i)=>
       hidden.has(i)
-        ? `<span class="w veiled" onclick="peek(this)">${esc(w)}</span>`
-        : wSpan(w,q)).join(" ")}</div>
+        ? `<span class="w veiled" role="button" tabindex="0" aria-label="hidden word" onclick="peek(this)">${esc(w)}</span>`
+        : wSpan(w,q)).join(J)}</div>
     <div class="peekmeter" id="peekMeter">${T.peeks?`Peeks this attempt: <b>${T.peeks}</b>`:"Tap a veiled word only if you must — struggling first is what builds the memory."}</div>`;
   }
   if(stage===3){ // first letters; ayah marks stay whole as anchors
@@ -732,17 +870,17 @@ function renderPassage(t, c, stage){
 function prevCue(t,c){
   if(c.i===0) return "";
   const prev = t.chunks[c.i-1];
-  const words = tokenize(prev.text);
-  const tail = words.slice(-6).join(" ");
+  const tail = tokenize(prev.text, t.lang).slice(-6).join(joiner(t.lang)).trim();
   return `<div class="cue ${t.rtl?'rtl':''}" title="end of previous chunk">… ${esc(tail)}</div>`;
 }
 
 function viewTrain(){
   if(!T) return viewLibrary();
   const t = getText(T.textId); if(!t) return viewLibrary();
-  const c = t.chunks.find(c=>c.id===T.chunkId); if(!c) return viewText(t.id);
-  const stage = (T.mode==="review"||T.mode==="recite") ? 4 : Math.min(c.stage,4);
+  const c = getChunk(t, T.chunkId); if(!c) return viewText(t.id);
+  const stage = trainStage(c);
   const idx = c.i+1;
+  const label = {review:"Review · "+dueChunks().length+" left", recite:"Recitation", practice:"Practice"}[T.mode] || STAGES[stage];
 
   let controls = "";
   if(T.mode==="learn" && stage<4){
@@ -757,9 +895,10 @@ function viewTrain(){
       <button class="primary" onclick="advanceStage(1)">Got it — next step</button>
       ${stage>0?`<button class="ghost" onclick="advanceStage(-1)">Too hard — step back</button>`:""}
     </div>`;
-  } else { // blind recall (learn stage 4, or review/recite)
+  } else { // blind recall (learn stage 4, or review/recite/practice)
     if(!T.revealed){
-      controls = `<div class="row" style="margin-top:14px">
+      controls = `${T.mode==="practice"&&!isDue(c)?`<p class="hint">Already by heart — practising won't push its next review later. Only "Again" brings it back sooner.</p>`:""}
+      <div class="row" style="margin-top:14px">
         <button class="primary" onclick="T.revealed=true;render()">Reveal & check</button>
         ${!T.hint?`<button class="ghost" onclick="T.hint=true;render()">Hint — first letters</button>`:""}
       </div>
@@ -782,7 +921,7 @@ function viewTrain(){
   </div>
   <div class="stagebar">
     <div class="row spread">
-      <span class="stage-name">${T.mode==="review"?("Review · "+dueChunks().length+" left"):T.mode==="recite"?"Recitation":STAGES[stage]}</span>
+      <span class="stage-name">${label}</span>
       ${ladder(c)}
     </div>
   </div>
@@ -794,39 +933,51 @@ function viewTrain(){
 function buzz(){ try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){} }
 function resetAttempt(){ T.revealed=false; T.hint=false; T.peeks=0; }
 function advanceStage(d){
-  const t=getText(T.textId), c=t.chunks.find(x=>x.id===T.chunkId);
+  const c=getChunk(getText(T.textId), T.chunkId); if(!c) return;
   c.stage = Math.max(0, Math.min(4, c.stage+d));
   resetAttempt(); buzz();
   save(); render();
 }
 function doGrade(g){
-  const t=getText(T.textId), c=t.chunks.find(x=>x.id===T.chunkId);
+  const t=getText(T.textId), c=getChunk(t, T.chunkId); if(!c) return;
   buzz();
   if(T.mode==="learn"){
     if(g>=2){ // graduated!
       c.stage=5; gradeChunk(c,g); logActivity("learned"); save();
       const next = t.chunks.find(x=>x.stage<5);
       toast("By heart ✓ — review scheduled in "+fmtIn(c.due));
-      if(next){ T={textId:t.id, chunkId:next.id, mode:"learn", revealed:false, hint:false, peeks:0}; render(); }
+      if(next){ T=attempt(t.id, next.id, "learn"); render(); }
       else { toast("Whole text learned — reviews will keep it fresh"); go("text",{id:t.id}); }
     } else {
       c.stage = g===0?1:3; // drop back for relearning
       resetAttempt(); save(); render();
       toast(g===0?"No problem — back to a lighter veil":"Back to first letters");
     }
-  } else if(T.mode==="recite"){ // sequential full-text recitation
-    if(c.stage>=5){ gradeChunk(c,g); if(g===0) c.stage=3; logActivity("reviews"); }
-    save();
-    const next = t.chunks[c.i+1];
-    if(next){ T={textId:t.id, chunkId:next.id, mode:"recite", revealed:false, hint:false, peeks:0}; render(); }
-    else { toast("Full recitation complete 🎉"); go("text",{id:t.id}); }
-  } else { // review
-    gradeChunk(c,g);
-    if(g===0) c.stage=3; // will relearn via first letters then blind
+    return;
+  }
+  if(T.mode==="review"){
+    gradeChunk(c,g); // "Again" stays in the queue, due in 10 minutes
     logActivity("reviews");
     R.done++; if(g===0) R.again++;
     save();
     nextReview();
+    return;
+  }
+  // recite / practice happen off schedule: a due chunk counts as its review,
+  // a blank brings it back soon, and anything else leaves the schedule alone
+  // (grading early would stretch intervals the chunk hasn't earned yet)
+  if(c.stage>=5){
+    if(isDue(c)){ gradeChunk(c,g); logActivity("reviews"); }
+    else if(g===0) gradeChunk(c,0);
+  }
+  save();
+  if(T.mode==="recite"){
+    const next = t.chunks[c.i+1];
+    if(next){ T=attempt(t.id, next.id, "recite"); render(); }
+    else { toast("Full recitation complete 🎉"); go("text",{id:t.id}); }
+  } else {
+    toast(g===0 ? "It'll come back for review in 10 minutes" : "Nice — next review in "+fmtIn(c.due));
+    go("text",{id:t.id});
   }
 }
 
@@ -859,16 +1010,17 @@ function viewReview(){
 }
 function nextReview(){
   const due = dueChunks();
-  if(!due.length){ go("review"); return; }
+  const replace = route.name==="train"; // one Back-button entry for the whole session
+  if(!due.length){ go("review", null, {replace}); return; }
   const {t,c} = due[0];
-  T = {textId:t.id, chunkId:c.id, mode:"review", revealed:false, hint:false, peeks:0};
-  go("train");
+  T = attempt(t.id, c.id, "review");
+  go("train", null, {replace});
 }
 
 /* ============ Recite whole ============ */
 function reciteAll(id){
   const t=getText(id); if(!t || !t.chunks.length) return;
-  T={textId:id, chunkId:t.chunks[0].id, mode:"recite", revealed:false, hint:false, peeks:0};
+  T = attempt(id, t.chunks[0].id, "recite");
   toast("Recite each chunk in order, then grade yourself");
   go("train");
 }
@@ -902,7 +1054,7 @@ function viewSettings(){
   const st=S.settings;
   let themes = THEMES.map(t=>{
     const sw = t.sw[st.mode]||t.sw.dark;
-    return `<div class="theme-card ${st.theme===t.id?'selected':''}" onclick="setTheme('${t.id}')">
+    return `<div class="theme-card ${st.theme===t.id?'selected':''}" role="button" tabindex="0" aria-pressed="${st.theme===t.id}" onclick="setTheme('${t.id}')">
       <div class="swatches">${sw.map(c=>`<span class="sw" style="background:${c}"></span>`).join("")}</div>
       <div class="tname">${t.name}</div>
     </div>`;
@@ -921,28 +1073,46 @@ function viewSettings(){
       </div>
     </div>
     <div>
-      <label class="field">Arabic text size — <span id="arSizeLbl">${Math.round(st.arSize*10)}pt</span></label>
-      <input type="range" min="1.2" max="2.6" step="0.1" value="${st.arSize}" oninput="setArSize(this.value)">
+      <label class="field" for="arSize">Arabic text size — <span id="arSizeLbl">${Math.round(st.arSize*10)}pt</span></label>
+      <input type="range" id="arSize" min="1.2" max="2.6" step="0.1" value="${st.arSize}" oninput="setArSize(this.value)">
       <div class="ar-preview" style="margin-top:10px">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
     </div>
-    <div><button class="ghost" onclick="go('library')">Done</button></div>
-  </div>`;
+  </div>
+  <h2 class="screen-title" style="margin-top:22px">Your data</h2>
+  <div class="card stack">
+    <p class="muted">Texts and progress live only on this device. Save a backup file before clearing browser data, or to move to another phone.</p>
+    <div class="row">
+      <button class="ghost" onclick="exportData()">Backup</button>
+      <button class="ghost" onclick="importData()">Restore</button>
+    </div>
+  </div>
+  <div><button class="ghost" onclick="go('library')">Done</button></div>`;
 }
 
 /* ============ backup / restore ============ */
 function exportData(){
-  const blob = new Blob([JSON.stringify(S,null,1)],{type:"application/json"});
+  const url = URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:"application/json"}));
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "byheart-backup.json";
-  a.click();
+  a.href = url;
+  a.download = `byheart-backup-${dayKey()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 10000);
 }
 function importData(){
   const inp=document.createElement("input"); inp.type="file"; inp.accept=".json,application/json";
   inp.onchange = () => {
     const f=inp.files[0]; if(!f) return;
     const r=new FileReader();
-    r.onload=()=>{ try{ S=JSON.parse(r.result); S.settings=Object.assign({theme:"ink",mode:"dark",arSize:1.6},S.settings||{}); save(); applySettings(); render(); toast("Backup restored"); }catch(e){ toast("That file couldn't be read"); } };
+    r.onload=()=>{
+      let next;
+      try{ next = normalizeState(JSON.parse(r.result)); }
+      catch(e){ toast("That file isn't a ByHeart backup"); return; }
+      const plural = n => n+" text"+(n===1?"":"s");
+      if(S.texts.length && !confirm(`Replace the ${plural(S.texts.length)} on this device with the ${plural(next.texts.length)} in this backup?`)) return;
+      S = next; save(); requestPersist(); applySettings();
+      go("library");
+      toast("Backup restored — "+plural(S.texts.length));
+    };
     r.readAsText(f);
   };
   inp.click();
@@ -956,14 +1126,17 @@ if ("serviceWorker" in navigator) {
 }
 
 function afterRender(){}
-/* keyboard shortcuts (desktop): Space/Enter reveal or advance · 1-4 grade · H hint */
 document.addEventListener("keydown", e=>{
-  if(route.name!=="train" || !T) return;
-  const tag=(e.target.tagName||"").toLowerCase();
-  if(tag==="input"||tag==="textarea"||tag==="select") return;
-  const t=getText(T.textId); if(!t) return;
-  const c=t.chunks.find(x=>x.id===T.chunkId); if(!c) return;
-  const stage=(T.mode==="review"||T.mode==="recite")?4:Math.min(c.stage,4);
+  const el = e.target;
+  // clickable cards, rows and veiled words (role="button") respond to Enter/Space like real buttons
+  if((e.key==="Enter"||e.key===" ") && el.getAttribute && el.getAttribute("role")==="button" && el.tagName!=="BUTTON"){
+    e.preventDefault(); el.click(); return;
+  }
+  /* trainer shortcuts (desktop): Space/Enter reveal or advance · 1-4 grade · H hint */
+  if(route.name!=="train" || !T || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(el.closest && el.closest("button,a,input,textarea,select")) return; // let focused controls act on their own
+  const c=getChunk(getText(T.textId), T.chunkId); if(!c) return;
+  const stage=trainStage(c);
   if(e.key===" "||e.key==="Enter"){
     e.preventDefault();
     if(stage<4){ advanceStage(1); }
@@ -974,6 +1147,7 @@ document.addEventListener("keydown", e=>{
     T.hint=true; render();
   }
 });
+S = load();
 applySettings();
 render();
 </script>

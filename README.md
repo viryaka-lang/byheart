@@ -52,5 +52,6 @@ fully offline.
 
 ## Your data
 All texts and progress are stored **on your device** (localStorage) —
-nothing is sent to any server. Use Backup/Restore inside the app to move
-data between devices or before clearing browser data.
+nothing is sent to any server. Use **Settings (⚙) → Your data → Backup / Restore**
+to move data between devices or before clearing browser data. On a fresh
+install, the empty library also offers "Restore a backup".
