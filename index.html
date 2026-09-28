@@ -241,6 +241,10 @@ button.grade{padding:12px 4px;font-size:.9rem;color:var(--on-accent)}
   text-align:center;padding:40px 12px;color:var(--paper-dim);
 }
 /* ---------- Ayah markers (Quran mode) ---------- */
+/* Warsh text from KFGQPC uses its own encoding (e.g. ے, ۬, ۪) and only reads correctly in its font */
+@font-face{font-family:"KFGQPC Warsh";src:url("fonts/warsh.10.woff2") format("woff2");font-display:swap}
+.warsh,.rtl.warsh,.chunkrow .snippet.warsh{font-family:"KFGQPC Warsh",var(--font-ar)}
+.passage.warsh{line-height:2.4}
 .passage .ayah{
   color:var(--saffron);font-size:.72em;vertical-align:middle;
   border:1px solid var(--veil-edge);border-radius:999px;
@@ -293,6 +297,7 @@ button.linkish{
   background:none;border:none;padding:0;cursor:pointer;
   color:var(--saffron);font:inherit;text-decoration:underline;text-underline-offset:3px;
 }
+.passage.warsh .ayah{border:none;padding:0 1px;font-size:1em;color:var(--saffron)} /* the font draws the verse ornament */
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -318,6 +323,7 @@ button.linkish{
 </nav>
 <div id="toast" class="toast"></div>
 
+<script src="samples.js"></script>
 <script>
 "use strict";
 
@@ -365,7 +371,7 @@ function normalizeState(s){
     if(!chunks.length) continue;
     const lang = LANGS.includes(t.lang) ? t.lang : detectLang(chunks.map(c=>c.text).join(" "));
     texts.push({ id:cleanId(t.id), title:String(t.title||"Untitled").slice(0,200), lang, rtl:isRTL(lang),
-      quran:!!t.quran, chunks, created:num(t.created,now()) });
+      quran:!!t.quran, font:t.font==="warsh"?"warsh":"", chunks, created:num(t.created,now()) });
   }
   const log = {};
   if(s.log && typeof s.log==="object")
@@ -430,6 +436,8 @@ function detectLang(t){
   return "";
 }
 const isRTL = lang => lang==="ar"||lang==="he";
+// KFGQPC Warsh text: yeh barree (never used in Hafs), or several tas'hil marks
+const isWarshText = t => /[\u06D2]/.test(t) || (t.match(/[\u06EC]/g)||[]).length >= 2;
 
 /* Scripts written without spaces between words are split with Intl.Segmenter */
 const SPACELESS = new Set(["zh","ja","th"]);
@@ -613,7 +621,8 @@ function viewLibrary(){
         <button class="primary" onclick="go('add')">Add a text</button>
         <button class="ghost" onclick="createExample()">Try an example</button>
       </div>
-      <p style="margin-top:18px">Moving from another device? <button class="linkish" onclick="importData()">Restore a backup</button></p>
+      ${SAMPLES.map(x=>`<p style="margin-top:14px">Or load a sample: <button class="linkish" onclick="createSample('${x.id}')">${esc(x.label)}</button></p>`).join("")}
+      <p style="margin-top:14px">Moving from another device? <button class="linkish" onclick="importData()">Restore a backup</button></p>
     </div>`;
     return html;
   }
@@ -658,6 +667,11 @@ function viewLibrary(){
 function viewAdd(){
   return `<h2 class="screen-title">New text</h2>
   <div class="card stack">
+    <div><label class="field" for="fSample">Start from a sample (optional)</label>
+      <select id="fSample" onchange="loadSample(this.value)">
+        <option value="">Paste your own text below</option>
+        ${[EXAMPLE, ...SAMPLES].map(x=>`<option value="${x.id}">${esc(x.label)}</option>`).join("")}
+      </select></div>
     <div><label class="field" for="fTitle">Title</label><input type="text" id="fTitle" dir="auto" maxlength="200" placeholder="e.g. Surah Al-Mulk · If— by Kipling"></div>
     <div><label class="field" for="fBody">Text to memorize</label>
       <textarea id="fBody" dir="auto" placeholder="Paste the full text here — Arabic or any language. Line breaks and verse marks are used to split it into small chunks." oninput="autoDir(this);previewChunks()"></textarea></div>
@@ -675,7 +689,6 @@ function viewAdd(){
     <p class="hint" id="chunkPreview" style="margin-top:0"></p>
     <div class="row">
       <button class="primary" onclick="createText()">Chunk & start</button>
-      <button class="ghost" onclick="loadExample()">Try an example</button>
       <button class="ghost" onclick="go('library')">Cancel</button>
     </div>
   </div>
@@ -691,26 +704,38 @@ function previewChunks(){
   el.textContent = `This will become ${n} chunk${n===1?"":"s"} — roughly ${n} short learning session${n===1?"":"s"}.`;
 }
 const EXAMPLE = {
+  id:"ikhlas",
+  label:"Surah Al-Ikhlas — Hafs (4 verses)",
   title:"Surah Al-Ikhlas",
   body:"قُلْ هُوَ اللَّهُ أَحَدٌ ﴿١﴾ اللَّهُ الصَّمَدُ ﴿٢﴾ لَمْ يَلِدْ وَلَمْ يُولَدْ ﴿٣﴾ وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ ﴿٤﴾"
 };
 const newChunks = pieces => pieces.map((text,i)=>({id:uid(), i, text, stage:0, ef:2.5, reps:0, interval:0, due:0}));
-function addText(title, lang, quran, pieces){
-  const t = { id:uid(), title, lang, rtl:isRTL(lang), quran, chunks:newChunks(pieces), created:now() };
+function addText(title, lang, quran, pieces, font){
+  const t = { id:uid(), title, lang, rtl:isRTL(lang), quran, font:font||"", chunks:newChunks(pieces), created:now() };
   S.texts.push(t); save(); requestPersist();
   return t;
 }
-function loadExample(){
-  $("fTitle").value = EXAMPLE.title;
-  $("fBody").value = EXAMPLE.body;
+if(typeof SAMPLES==="undefined") window.SAMPLES = []; // samples.js missing: app still works
+const findSample = id => [EXAMPLE, ...SAMPLES].find(x=>x.id===id);
+function loadSample(id){
+  const x = findSample(id); if(!x) return;
+  $("fTitle").value = x.title;
+  $("fBody").value = x.body;
   autoDir($("fBody")); previewChunks();
 }
 function createExample(){
   const t = addText(EXAMPLE.title, "ar", true, chunkQuran(EXAMPLE.body, 8));
   startTrain(t.id, t.chunks[0].id);
 }
+function createSample(id){
+  const x = findSample(id); if(!x) return;
+  const t = addText(x.title, "ar", true, chunkQuran(x.body, 14), isWarshText(x.body)?"warsh":"");
+  toast(t.chunks.length+" verse-aligned chunks created");
+  go("text",{id:t.id});
+}
 function autoDir(el){
   el.classList.toggle("rtl", isArabicText(el.value));
+  el.classList.toggle("warsh", isWarshText(el.value));
   const q = hasAyahMarks(el.value);
   const cb = $("fQuran"), hint = $("quranHint");
   if(q && cb && !cb.checked){ cb.checked = true; if(hint) hint.style.display="block"; }
@@ -722,7 +747,8 @@ function createText(){
   const size = parseInt($("fSize").value,10);
   const lang = detectLang(body);
   const quran = $("fQuran").checked;
-  const t = addText(title, lang, quran, quran ? chunkQuran(body, size) : chunkText(body, size, lang));
+  const t = addText(title, lang, quran, quran ? chunkQuran(body, size) : chunkText(body, size, lang),
+    quran && isWarshText(body) ? "warsh" : "");
   toast(t.chunks.length+(quran?" verse-aligned chunks created":" chunks created"));
   go("text",{id:t.id});
 }
@@ -747,7 +773,7 @@ function viewText(id){
     const due = isDue(c);
     html += `<div class="chunkrow" role="button" tabindex="0" onclick="startTrain('${t.id}','${c.id}')">
       ${ladder(c)}
-      <span class="snippet ${t.rtl?'rtl':''}">${esc(shorten(c.text,80))}</span>
+      <span class="snippet ${textCls(t)}">${esc(shorten(c.text,80))}</span>
       ${due?`<span class="tag due">due</span>`:c.stage>=5?`<span class="tag">${fmtIn(c.due)}</span>`:`<span class="tag">${STAGES[Math.min(c.stage,5)]}</span>`}
     </div>`;
   }
@@ -793,7 +819,8 @@ function startTrain(textId, chunkId){
   go("train");
 }
 
-const passageCls = t => (t.rtl?"rtl ":"") + (SPACELESS.has(t.lang)?"tight":"");
+const textCls = t => (t.rtl?"rtl":"") + (t.font==="warsh"?" warsh":"");
+const passageCls = t => textCls(t) + (SPACELESS.has(t.lang)?" tight":"");
 function wSpan(w, quran){
   if(quran && isAyahMark(w)) return `<span class="ayah">${esc(w)}</span>`;
   if(!w.trim()) return w; // whitespace token in spaceless scripts
@@ -871,7 +898,7 @@ function prevCue(t,c){
   if(c.i===0) return "";
   const prev = t.chunks[c.i-1];
   const tail = tokenize(prev.text, t.lang).slice(-6).join(joiner(t.lang)).trim();
-  return `<div class="cue ${t.rtl?'rtl':''}" title="end of previous chunk">… ${esc(tail)}</div>`;
+  return `<div class="cue ${textCls(t)}" title="end of previous chunk">… ${esc(tail)}</div>`;
 }
 
 function viewTrain(){

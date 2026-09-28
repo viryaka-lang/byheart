@@ -1,10 +1,12 @@
 /* ByHeart service worker — offline-first app shell.
    To ship an update: change the VERSION string and redeploy. */
-const VERSION = "byheart-v2";
+const VERSION = "byheart-v3";
 const SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
+  "./samples.js",
+  "./fonts/warsh.10.woff2",
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"

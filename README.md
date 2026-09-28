@@ -12,6 +12,8 @@ fully offline.
 | `index.html` | The entire app |
 | `manifest.webmanifest` | App name, colors, icons for installation |
 | `sw.js` | Service worker — offline caching |
+| `samples.js` | Built-in sample texts (Surah Yunus, Warsh 'an Nafi') |
+| `fonts/warsh.10.woff2` | KFGQPC Warsh Uthmanic font, used for Warsh Quran text |
 | `icon-192.png`, `icon-512.png` | App icons |
 | `icon-maskable-512.png` | Icon for Android's round/squircle masks |
 
@@ -55,3 +57,10 @@ All texts and progress are stored **on your device** (localStorage) —
 nothing is sent to any server. Use **Settings (⚙) → Your data → Backup / Restore**
 to move data between devices or before clearing browser data. On a fresh
 install, the empty library also offers "Restore a backup".
+
+## Sample texts
+The Surah Yunus sample (riwayat Warsh 'an Nafi', 109 verses) and the Warsh
+font come from the King Fahd Glorious Quran Printing Complex (KFGQPC)
+Uthmanic Warsh data, version 10 — https://qurancomplex.gov.sa/en/techquran/dev/
+The verse text is included unchanged. Warsh text pasted from the same KFGQPC
+source is detected automatically and shown in the Warsh font.
